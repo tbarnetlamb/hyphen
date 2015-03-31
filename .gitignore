@@ -1,0 +1,4 @@
+*~
+*.pyc
+hyphen/lowlevel_inter
+hyphen/hslowlevel.so
