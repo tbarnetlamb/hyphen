@@ -19,13 +19,25 @@ marshall_cache = {}
 
 # need to process lists as a special case
 
+seen_visible_modules = {}
+
+def get_seen_visible_module(tyc):
+    if tyc in seen_visible_modules:
+        return seen_visible_modules[tyc]
+    else:
+        vm = tyc.visible_module
+        if vm is not None:
+            seen_visible_modules[tyc] = vm
+        return vm
+
 def process_constructors_from_module(module_name):
     data_ns, tycon_ns = fetch_lib_module(module_name)
     tycons_defined_here = {}
     if module_name == 'GHC.Types':
         tycon_ns['[]'] = hs_List
     for tycon_name, tycon in tycon_ns.items():
-        if tycon.module != module_name:
+        if not isinstance(tycon, hyphen.hslowlevel.TyCon) or (
+                get_seen_visible_module(tycon) != module_name):
             continue
         assert tycon.name == tycon_name
         tycons_defined_here[tycon] = ({}, {})
@@ -47,14 +59,22 @@ def process_constructors_from_module(module_name):
     for tyc, (dacons, meths) in tycons_defined_here.items():
         process_constructor(tyc, dacons, meths)
 
-def marshall_tycon(tc):
+def marshall_tycon(tc, none_acceptable=True):
     if tc not in marshall_cache:
-        process_constructors_from_module(tc.module)
+        vm = get_seen_visible_module(tc)
+        if vm is None:
+            assert none_acceptable
+            return None
+        process_constructors_from_module(vm)
     return marshall_cache[tc]
 
-def get_marshalled_dacon(tc, dacon_name):
+def get_marshalled_dacon(tc, dacon_name, none_acceptable=True):
     if tc not in marshall_cache:
-        process_constructors_from_module(tc.module)
+        vm = get_seen_visible_module(tc)
+        if vm is None:
+            assert none_acceptable
+            return None
+        process_constructors_from_module(vm)
     return marshall_cache[(tc, dacon_name)]
 
 def applyFromPyArgs(fn, *args):
@@ -219,7 +239,7 @@ def make_component_fetcher(co_dacon):
 
 def process_dacon(dacon, co_dacon, dacon_name, tycon_class):
     customizations = {'__slots__'      : ['_components_store'],
-                      '__components__' : make_component_fetcher(co_dacon),
+                      '_components'    : make_component_fetcher(co_dacon),
                       '__module__'     : 'hs.' + tycon_class.hs_tycon.module}
     if (tycon_class.hs_tycon, dacon_name) in dacon_specials:
         customizations.update(dacon_specials[dacon])

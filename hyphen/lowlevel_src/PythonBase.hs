@@ -66,6 +66,7 @@ foreign import ccall exSystemExit         :: IO PyObj
 foreign import ccall exEOFError           :: IO PyObj
 
 foreign import ccall py_NotImplemented    :: IO PyObj
+foreign import ccall py_None              :: IO PyObj
 
 pyTypeErr :: Text -> IO PyObj
 pyTypeErr str = withCString (T.unpack str) c_pyTypeErr

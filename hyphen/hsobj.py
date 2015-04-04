@@ -66,3 +66,4 @@ class HsObj(hslowlevel.HsObjRaw):
         return hyphen.marshall_obj_to_py.hs_to_py(super(HsObj, self).subst(*args, **kwa))
     
     hs_dacon = 'BLANK_IN_HSOBJ'
+

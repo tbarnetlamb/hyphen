@@ -188,64 +188,71 @@ compareVia ok unwrap obj1 obj2 cmp_desired = do
          4 {-py_GT-} -> case compare a1 a2 of {LT -> False; EQ -> False; GT -> True;}
          5 {-py_GE-} -> case compare a1 a2 of {LT -> False; EQ -> True;  GT -> True;}
 
-foreign export ccall tycon_hash             :: PyObj -> IO Int
+foreign export ccall tycon_hash               :: PyObj -> IO Int
 tycon_hash       = return . hash                             <=< unwrapPythonTyCon
 
-foreign export ccall tycon_richcmp          :: PyObj -> PyObj -> Int -> IO PyObj
+foreign export ccall tycon_richcmp            :: PyObj -> PyObj -> Int -> IO PyObj
 tycon_richcmp    = compareVia pyTyCon_Check unwrapPythonTyCon
 
-foreign export ccall tycon_str              :: PyObj -> IO PyObj
+foreign export ccall tycon_str                :: PyObj -> IO PyObj
 tycon_str        = pythonateText . aug . tyConFullName       <=< unwrapPythonTyCon
   where aug txt = T.concat [T.pack "<hyphen.TyCon object representing ", txt, T.pack ">"]
 
-foreign export ccall tycon_repr             :: PyObj -> IO PyObj
+foreign export ccall tycon_repr               :: PyObj -> IO PyObj
 tycon_repr       = pythonateText . tyConRepr                 <=< unwrapPythonTyCon
 
-foreign export ccall tycon_getname          :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall tycon_getname            :: PyObj -> Ptr () -> IO PyObj
 tycon_getname    = ignoring2nd (pythonateText . tyConName    <=< unwrapPythonTyCon)
 
-foreign export ccall tycon_getmodule        :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall tycon_getmodule          :: PyObj -> Ptr () -> IO PyObj
 tycon_getmodule  = ignoring2nd (pythonateText . tyConModule  <=< unwrapPythonTyCon)
 
-foreign export ccall tycon_getpackage       :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall tycon_get_visible_module :: PyObj -> Ptr () -> IO PyObj
+tycon_get_visible_module = 
+                   ignoring2nd (pythonateLoc . tyConLocation <=< unwrapPythonTyCon)
+  where pythonateLoc :: TyCLocation -> IO PyObj
+        pythonateLoc (InExplicitModuleNamed t) = pythonateText t
+        pythonateLoc _                         = py_None
+
+foreign export ccall tycon_getpackage         :: PyObj -> Ptr () -> IO PyObj
 tycon_getpackage = ignoring2nd (pythonateText . tyConPackage <=< unwrapPythonTyCon)
 
-foreign export ccall tycon_getarity         :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall tycon_getarity           :: PyObj -> Ptr () -> IO PyObj
 tycon_getarity   = ignoring2nd (pythonateInt  . tyConArity   <=< unwrapPythonTyCon)
 
-foreign export ccall tycon_get_is_cls       :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall tycon_get_is_cls         :: PyObj -> Ptr () -> IO PyObj
 tycon_get_is_cls = ignoring2nd (pythonateBool . tyConIsCls   <=< unwrapPythonTyCon)
 
-foreign export ccall tycon_getkind          :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall tycon_getkind            :: PyObj -> Ptr () -> IO PyObj
 tycon_getkind    = ignoring2nd (
                    pythonateString . kindString . tyConKind  <=< unwrapPythonTyCon)
 
-foreign export ccall hstype_hash            :: PyObj -> IO Int
+foreign export ccall hstype_hash              :: PyObj -> IO Int
 hstype_hash      = return . hash               <=< unwrapPythonHsType
 
-foreign export ccall hstype_richcmp          :: PyObj -> PyObj -> Int -> IO PyObj
+foreign export ccall hstype_richcmp           :: PyObj -> PyObj -> Int -> IO PyObj
 hstype_richcmp   = compareVia pyHsType_Check unwrapPythonHsType
 
-foreign export ccall hstype_str              :: PyObj -> IO PyObj
+foreign export ccall hstype_str               :: PyObj -> IO PyObj
 hstype_str       = pythonateText . aug . typeName             <=< unwrapPythonHsType
   where aug txt = T.concat [T.pack "<hyphen.HsType object representing ", txt, T.pack ">"]
 
-foreign export ccall hstype_repr             :: PyObj -> IO PyObj
+foreign export ccall hstype_repr              :: PyObj -> IO PyObj
 hstype_repr      = pythonateText . hsTypeRepr                 <=< unwrapPythonHsType
 
-foreign export ccall hstype_gettail         :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall hstype_gettail           :: PyObj -> Ptr () -> IO PyObj
 hstype_gettail   = ignoring2nd (
   liftM (fromMaybe nullPyObj) . runMaybeT . pythonateTuple 
   . map (treatingAsErr nullPyObj . wrapPythonHsType) . typeTail <=< unwrapPythonHsType)
 
-foreign export ccall hstype_getname         :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall hstype_getname           :: PyObj -> Ptr () -> IO PyObj
 hstype_getname   = ignoring2nd (pythonateText . typeName        <=< unwrapPythonHsType)
 
-foreign export ccall hstype_getkind         :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall hstype_getkind           :: PyObj -> Ptr () -> IO PyObj
 hstype_getkind   = ignoring2nd (
                       pythonateString . kindString . typeKind   <=< unwrapPythonHsType)
 
-foreign export ccall hstype_getfvs          :: PyObj -> Ptr () -> IO PyObj
+foreign export ccall hstype_getfvs            :: PyObj -> Ptr () -> IO PyObj
 hstype_getfvs    = ignoring2nd (
   liftM (fromMaybe nullPyObj) . runMaybeT . pythonateDict 
   (treatingAsErr nullPyObj . pythonateText . getVar) 
@@ -499,14 +506,14 @@ buildHaskellDouble   = formSimpleHsObjRaw
 
 ------------------------------------------------------------------
 
-pythonateModuleRet :: (Map Text Obj, Map Text TyCon) -> PythonM PyObj
-pythonateModuleRet (objs, typs) = pythonateTuple [
+pythonateModuleRet :: (Map Text Obj, Map Text TyNSElt) -> PythonM PyObj
+pythonateModuleRet (objs, tycelts) = pythonateTuple [
   prepareDict (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs, 
-  prepareDict (treatingAsErr nullPyObj . wrapPythonTyCon)   typs]
+  prepareDict (treatingAsErr nullPyObj . either wrapPythonTyCon wrapPythonHsType) tycelts]
   where prepareDict = pythonateDict (treatingAsErr nullPyObj . pythonateText)
 
-wrapImport :: (GhcMonad.Session -> [String] -> 
-               MaybeT IO (Map Text (Map Text Obj, Map Text TyCon)))
+wrapImport :: (GhcMonad.Session -> [Text] -> 
+               MaybeT IO (Map Text (Map Text Obj, Map Text TyNSElt)))
               -> WStPtr -> PyObj -> IO PyObj
 wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   sess  <- lift $ deRefStablePtr (
@@ -521,7 +528,7 @@ wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . run
         textFromPythonObj pyobj
   allSrcsList <- mapM getArgChecked [1..nArgs]
   pythonateDict (treatingAsErr nullPyObj . pythonateText) pythonateModuleRet
-    =<< (i_fn sess $ map T.unpack allSrcsList)
+    =<< (i_fn sess allSrcsList)
 
 foreign export ccall prepare_GHC_state :: Ptr WStPtr -> IO Int
 prepare_GHC_state addr = liftM (fromMaybe (-1)) . runMaybeT $ do

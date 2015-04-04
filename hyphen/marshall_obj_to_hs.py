@@ -165,7 +165,7 @@ def to_haskell_Maybe(obj, hstype):
     if obj is None:
         return hs_Nothing
     else:
-        return hs_mkJust(py_to_hs(obj, justType))
+        return hslowlevel.apply(hs_mkJust, py_to_hs(obj, justType))
 
 def to_haskell_IOact(obj, hstype):
     assert hstype.head == hs_IO
@@ -188,7 +188,7 @@ def to_haskell_List(obj, hstype):
 def to_haskell_Set(obj, hstype):
     assert hstype.head == hs_Set
     elemType, = hstype.tail
-    return hslowlevel.apply(hs_mkSet, to_haskell_List(obj), hs_List(elemType))
+    return hslowlevel.apply(hs_mkSet, to_haskell_List(obj, hs_List(elemType)))
 
 def to_haskell_Map(obj, hstype):
     assert hstype.head == hs_Map
@@ -197,7 +197,7 @@ def to_haskell_Map(obj, hstype):
     except:
         my_iter = ((k, obj[k]) for k in obj)
     return hslowlevel.apply(
-        hs_mkMap, to_haskell_List(my_iter), hs_List(make_hs_tuple_type(*hstype.tail)))
+        hs_mkMap, to_haskell_List(my_iter, hs_List(make_hs_tuple_type(*hstype.tail))))
 
 def to_haskell_Tuple(obj, hstype):
     assert hstype.head in hs_tupletycs

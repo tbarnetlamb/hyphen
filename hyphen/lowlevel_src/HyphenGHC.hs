@@ -3,7 +3,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module HyphenGHC (createGHCSession, importLibModules, importSrcModules, accessBasics) where
+module HyphenGHC (createGHCSession, importLibModules, importSrcModules, accessBasics,
+                  TyNSElt) where
 
 --import Debug.Trace
 import Control.Arrow
@@ -13,10 +14,12 @@ import Control.Monad.State.Strict
 import Data.IORef
 import Data.Monoid
 import Data.Maybe
+import Data.Either
 import Data.List
 import Data.Text                      (Text)
 import Data.Set                       (Set)
 import Data.Map.Strict                (Map)
+import qualified Control.Exception
 import qualified Data.Text            as T
 import qualified Data.Set             as Set
 import qualified Data.Map.Strict      as Map
@@ -37,6 +40,8 @@ import qualified MonadUtils  as GHCMonadUtils
 import qualified Var         as GHCVar
 import qualified Outputable  as GHCOutputable
 import qualified ErrUtils    as GHCErrUtils
+import qualified Exception   as GHCException
+import qualified HscTypes    as GHCHscTypes
 import qualified GhcMonad
 
 import HyphenBase
@@ -63,20 +68,35 @@ ourInitGhcMonad mb_top_dir = do
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv dflags
   GHC.setSession env
 
-performGHCOps  :: GhcMonad.Session -> GhcMonad.Ghc a -> PythonM a
-performGHCOps sess ghcAct = promoteErr =<< (
-  translatingHsExcepts . lift $ flip GhcMonad.reflectGhc sess $ reportingGHCErrors ghcAct)
+performGHCOps  :: (Maybe String) -> GhcMonad.Session -> GhcMonad.Ghc a -> PythonM a
+performGHCOps msgHint sess ghcAct = promoteErr =<< (
+  translatingHsExcepts . lift $ flip GhcMonad.reflectGhc sess 
+  $ reportingGHCErrors msgHint ghcAct)
 
-reportingGHCErrors :: GhcMonad.Ghc a -> GhcMonad.Ghc (Either ErrMsg a)
-reportingGHCErrors action = do
+reportingGHCErrors :: (Maybe String) -> GhcMonad.Ghc a -> GhcMonad.Ghc (Either ErrMsg a)
+reportingGHCErrors msgHint action = do
   logref <- GHCMonadUtils.liftIO $ newIORef ""
   dflags <- GhcMonad.getSessionDynFlags
-  GHC.setSessionDynFlags $ dflags { GHCDynFlags.log_action = logHandler logref }
-  result <- action
+  let prep  = GHC.setSessionDynFlags $ dflags { GHCDynFlags.log_action = logHandler logref }
+      clean = GHC.setSessionDynFlags dflags
+      handler :: GHCHscTypes.SourceError -> GhcMonad.Ghc a
+      handler ex = GHCMonadUtils.liftIO $ do 
+        case msgHint of 
+          Just h  -> Control.Exception.throwIO . Control.Exception.AssertionFailed $ 
+                     h ++ show ex
+          Nothing -> Control.Exception.throwIO ex
+        
+  result <- GHCException.ghandle handler $ do
+    GHCException.gbracket prep (const clean) . const $ do
+      action
   problems <- GHCMonadUtils.liftIO $ readIORef logref
-  GHC.setSessionDynFlags dflags
-  return $ if (problems == "") then Right result else report problems
- where logHandler :: IORef String -> GHCDynFlags.LogAction
+  
+  return $ if (problems == "") then Right result else report $ hintedWith msgHint problems
+ where hintedWith :: (Maybe String) -> String -> String
+       hintedWith Nothing  s = s  
+       hintedWith (Just h) s = concat [s, "\n(while trying to ", h, ")"]
+
+       logHandler :: IORef String -> GHCDynFlags.LogAction
        logHandler ref dflags severity srcSpan style msg =
            case severity of
              GHCErrUtils.SevError ->  modifyIORef' ref (++ printDoc)
@@ -90,8 +110,10 @@ createGHCSession :: PythonM GhcMonad.Session
 createGHCSession = do
   ref <- lift $ newIORef (error "Empty session")
   let session = GhcMonad.Session ref
-  translatingHsExcepts . lift . flip GhcMonad.reflectGhc session $ (
-    ourInitGhcMonad (Just GHC.Paths.libdir))
+  translatingHsExcepts . lift . flip GhcMonad.reflectGhc session $
+    ourInitGhcMonad (Just GHC.Paths.libdir)
+  performGHCOps Nothing session (
+    ensureModulesInContext $ Set.fromList [T.pack "Prelude"])
   return session
 
 unpackGHCKind :: GHC.Kind -> Maybe Kind
@@ -101,41 +123,81 @@ unpackGHCKind k
   | otherwise           = do (kcon, _) <- GHCType.splitTyConApp_maybe k
                              guard (kcon == GHCType.liftedTypeKindTyCon) >> (Just $ Kind [])
 
-transformGHCTyc :: GHC.TyCon -> Maybe (Text, TyCon)
-transformGHCTyc tyc = do
+type PreObj    = (Text, HsType)
+type TyNSElt   = Either TyCon HsType
+data PreTycLoc = PreTycLoc Text Bool [Int]
+
+finalizePreTycLoc :: Int -> PreTycLoc -> Maybe TyCLocation
+finalizePreTycLoc i (PreTycLoc n ivt locs) 
+  | n /= T.pack "" = Just $ ImplicitlyVia n ivt (reverse $ i:locs)
+  | otherwise      = Nothing
+
+transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe TyCon
+transformGHCTyc loc tyc = do
   let ghcName = GHC.getName tyc
       modl    = GHC.nameModule ghcName
       pckg    = T.pack . GHCModule.packageIdString $ GHC.modulePackageId modl
       mname   = T.pack . GHC.moduleNameString $ GHC.moduleName modl
       oname   = T.pack . GHCOccName.occNameString $ GHC.getOccName ghcName
+      loc'    = fromMaybe (InExplicitModuleNamed mname) loc
   kind <- unpackGHCKind $ GHCTyCon.tyConKind tyc
-  return $ (oname, mkTyCon pckg mname oname kind (GHC.isClassTyCon tyc))
+  return $ mkTyCon pckg mname oname loc' kind (GHC.isClassTyCon tyc)
 
-transformGHCType :: GHC.Type -> Maybe HsType
-transformGHCType = transformGHCType' . GHCType.expandTypeSynonyms
+transformGHCTyNSElt :: Text -> GHC.TyCon -> Maybe (Text, TyNSElt)
+transformGHCTyNSElt import_module tyc = let
+  ghcName      = GHC.getName tyc
+  oname        = T.pack . GHCOccName.occNameString $ GHC.getOccName ghcName
+  fullname     = T.concat [import_module, T.pack ".", oname]
+  args         = [ Var . (T.append $ T.pack "arg_") . T.pack . show $ i
+                 | i <- [1..GHCTyCon.tyConArity tyc]] :: [Var]
+  in case GHCTyCon.tcExpandTyCon_maybe tyc args of
+    Nothing -> do
+      tyc' <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
+      return (oname, Left tyc')
+    Just (assigs, expansion, leftoverVars) -> case leftoverVars of
+      (_:_) -> error "transformGHCTyNSElt: unexpected leftover vars"
+      []    -> do let doAssig (tyv, var) = do (tyv', k) <- transformGHCTyVar tyv
+                                              return (tyv', mkHsType (Right (var, k)) [])
+                  assigs'      <- mapM doAssig assigs
+                  let substMap  = Map.fromList assigs'
+                  hst          <- transformGHCType fullname True expansion
+                  return (oname, Right $ transformType substMap hst)
 
-transformGHCType' :: GHC.Type -> Maybe HsType
-transformGHCType' typ 
+transformGHCType :: Text -> Bool -> GHC.Type -> Maybe HsType
+transformGHCType n ivt = transformGHCType' (PreTycLoc n ivt []). GHCType.expandTypeSynonyms
+
+transformGHCTypes :: PreTycLoc -> [GHC.Type] -> Maybe [HsType]
+transformGHCTypes (PreTycLoc mn on sf) tys = let
+  subLocs = map ((PreTycLoc mn on) . (:sf)) [0..]
+  in sequence . reverse $ zipWith transformGHCType' subLocs (reverse tys)
+
+transformGHCType' :: PreTycLoc -> GHC.Type -> Maybe HsType
+transformGHCType' locSoFar typ 
   = let (vars,   rest)  = GHC.splitForAllTys typ
     in case splitConstraint rest of
-      (Just c, rest') -> transformGHCType' rest'
+      (Just c, rest') -> transformGHCType' locSoFar rest'
       (Nothing, _)    -> case GHCType.splitTyConApp_maybe rest of
         Just (tyc, args) -> do 
           unpackGHCKind $ GHCType.typeKind rest -- check result type is of a kind we support 
                                                 -- (lifted, etc.)
-          args'     <- mapM transformGHCType' args
-          (_, tyc') <- transformGHCTyc tyc
+          args' <- transformGHCTypes locSoFar args
+          tyc'  <- transformGHCTyc (finalizePreTycLoc (length args) locSoFar) tyc
           return $ mkHsType (Left tyc') args'
         Nothing          -> 
           let (head, args) = GHCType.splitAppTys rest in case GHCType.getTyVar_maybe head of
             Just tyv        -> do
-              tyvKind     <- unpackGHCKind $ GHCVar.tyVarKind tyv
-              let tyvName = Var . T.pack . GHCOccName.occNameString . GHC.getOccName $
-                            GHCVar.tyVarName tyv
-              args' <- mapM transformGHCType' args
-              return $ mkHsType (Right (tyvName, tyvKind)) args'
-            Nothing         ->  Nothing
+              tyv'  <- transformGHCTyVar tyv
+              args' <- transformGHCTypes locSoFar args
+              return $ mkHsType (Right tyv') args'
+            Nothing         -> Nothing
 
+
+transformGHCTyVar :: GHC.TyVar -> Maybe (Var, Kind) 
+transformGHCTyVar tyv = do
+  k     <- unpackGHCKind $ GHCVar.tyVarKind tyv
+  let n  = Var . T.pack . GHCOccName.occNameString . GHC.getOccName $ GHCVar.tyVarName tyv
+  return (n, k)
+              
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
@@ -143,8 +205,6 @@ splitConstraint ty = case GHCType.splitFunTy_maybe ty of
     Nothing -> (Nothing, ty)
     Just (tyc, _) -> if tyc == GHCType.constraintKindTyCon
                      then (Just src, dest) else (Nothing, ty)
-
-type PreObj = (Text, HsType)
 
 createObj :: GhcMonad.Session -> PreObj -> PythonM Obj
 createObj sess (code, orig_type) = do
@@ -155,10 +215,10 @@ createObj sess (code, orig_type) = do
         hobj <- case HashMap.lookup hst curMemoTable of
           Just found -> return found
           Nothing    -> do
-            -- lift . traceIO . T.unpack . T.concat $ [ T.pack "about to eval: ", 
-            --   T.pack "((", code, T.pack ") :: ", typeName hst, T.pack ")"]
-            made <- performGHCOps sess . GHC.compileExpr . T.unpack . T.concat $ [
-              T.pack "((", code, T.pack ") :: ", typeName hst, T.pack ")"]
+            let to_eval = T.unpack . T.concat $ [
+                  T.pack "(", makeTypeForcer hst, T.pack " (", code, T.pack "))"]
+            made <- performGHCOps (Just $ "evaluate " ++ to_eval) sess (
+              GHC.compileExpr to_eval)
             lift . atomicModifyIORef memoTable $ \oldTable ->
               (HashMap.insert hst made oldTable, ())
             return made
@@ -169,8 +229,9 @@ transformGHCId :: Text -> GHC.Id -> Maybe (Text, PreObj)
 transformGHCId import_module i = do
   let ghcName = GHC.getName i
       oname   = T.pack . GHCOccName.occNameString $ GHC.getOccName ghcName
-  hst <- transformGHCType $ GHC.idType i
-  return (oname, (T.concat [import_module, T.pack ".", oname], hst))
+      fullN   = T.concat [import_module, T.pack ".", oname]
+  hst <- transformGHCType fullN False $ GHC.idType i
+  return (oname, (fullN, hst))
 
 dataConSpecials :: Map Text (Text, Text)
 dataConSpecials = Map.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
@@ -194,21 +255,20 @@ dataConSpecials = Map.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
 
 transformGHCDataCon :: Text -> GHC.DataCon -> [] (Text, PreObj)
 transformGHCDataCon import_module dc = fromMaybe [] $ do
-  dctyp       <- transformGHCType $ GHC.dataConType dc
   let ghcName = GHC.getName dc
       oname   = T.pack . GHCOccName.occNameString $ GHC.getOccName ghcName
-      (_, _, types, resultType) = GHC.dataConSig dc
-  types'      <- mapM transformGHCType types
-  resultType' <- transformGHCType resultType
-  let ntypes  = length types
-      codctyp = mkHsType (Left fnTyCon) [
-        resultType',
-        mkHsType (Left listTyCon) [
-          mkHsType (Left . tupleTyCon $ ntypes) types']]
-      vars    = [T.pack ("a" ++ show i) | i <- [0..ntypes-1]]
-      commaVars = T.intercalate (T.pack ", ") vars
-      spaceVars = T.unwords vars
       fullnam = T.concat [import_module, T.pack ".", oname]
+  dctyp       <- transformGHCType fullnam False $ GHC.dataConType dc
+  let (types, resultType) = breakFnTypeRec dctyp
+      ntypes  = length types
+      ntypes' = min 50 ntypes
+      tupTyp  = if ntypes == 1 then head types 
+                else mkHsType (Left . tupleTyCon $ ntypes') (take ntypes' types)
+      codctyp = mkHsType (Left fnTyCon) [
+        resultType, mkHsType (Left listTyCon) [tupTyp]]
+      vars    = [T.pack ("a" ++ show i) | i <- [0..ntypes-1]]
+      commaVars = T.intercalate (T.pack ", ") $ take ntypes' vars
+      spaceVars = T.unwords vars
   return $ case Map.lookup fullnam dataConSpecials of 
     Nothing -> [
       (oname, (fullnam, dctyp)), 
@@ -218,65 +278,80 @@ transformGHCDataCon import_module dc = fromMaybe [] $ do
     Just (code, cocode) -> [(oname, (code, dctyp)), 
                             (T.concat [T.pack "*co-", oname], (cocode, codctyp))]
 
-transformGHCTyThing :: Text -> GHC.TyThing -> ([(Text, PreObj)], [(Text, TyCon)])
+transformGHCTyThing :: Text -> GHC.TyThing -> ([(Text, PreObj)], [(Text, TyNSElt)])
 transformGHCTyThing im (GHCType.AnId     id) = (maybeToList $ transformGHCId      im id, [])
 transformGHCTyThing im (GHCType.ADataCon dc) = (transformGHCDataCon im dc,               [])
-transformGHCTyThing _  (GHCType.ATyCon   tc) = ([],        maybeToList (transformGHCTyc tc))
+transformGHCTyThing im (GHCType.ATyCon   tc) = ([], maybeToList (transformGHCTyNSElt im tc))
 transformGHCTyThing _  _                     = ([],                                      [])
 
-makePreModule :: String -> [GHC.TyThing] -> (Map Text PreObj, Map Text TyCon)
+makePreModule :: Text -> [GHC.TyThing] -> (Map Text PreObj, Map Text TyNSElt)
 makePreModule im tyths = let
-  im'          = T.pack im
-  (objs, tycs) = mconcat (map (transformGHCTyThing im') tyths)
-  in (Map.fromList objs, Map.fromList tycs)
+  (objs, tynselts) = mconcat (map (transformGHCTyThing im) tyths)
+  in (Map.fromList objs, Map.fromList tynselts)
 
-createModule :: GhcMonad.Session -> (Map Text PreObj, Map Text TyCon) -> 
-              PythonM (Map Text Obj, Map Text TyCon)
-createModule sess (preobjs, tycs) = do
+createModule :: GhcMonad.Session -> (Map Text PreObj, Map Text TyNSElt) -> 
+              PythonM (Map Text Obj, Map Text TyNSElt)
+createModule sess (preobjs, tynselts) = do
   objs <- Data.Traversable.mapM (createObj sess) preobjs
-  return (objs, tycs)
+  return (objs, tynselts)
 
-readGHCModule :: String -> GhcMonad.Ghc [GHC.TyThing]
+readGHCModule :: Text -> GhcMonad.Ghc [GHC.TyThing]
 readGHCModule name = do
-  mod        <- GHC.findModule (GHC.mkModuleName name) Nothing
+  mod        <- GHC.findModule (GHC.mkModuleName $ T.unpack name) Nothing
   mi         <- GHC.getModuleInfo mod
   infos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
   return [a |  Just (a, _, _) <- infos]
 
-readGHCModuleTypExpNames :: Text -> GhcMonad.Ghc (Text, Set Text)
-readGHCModuleTypExpNames name = do
-  mod        <- GHC.findModule (GHC.mkModuleName $ T.unpack name) Nothing
-  mi         <- GHC.getModuleInfo mod
-  let s = Set.fromList [T.pack . GHCOccName.occNameString $ occname
-                       | occname <- map GHC.getOccName $ maybe [] GHC.modInfoExports mi
-                       , GHCOccName.occNameSpace occname == GHCOccName.tcName]
-  return (name, s)
+readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (Map TyCon TyCon, Maybe Text)
+readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
+  result <- reportingGHCErrors Nothing $ do
+    tyths      <- readGHCModule mname
+    let nselts  = mapMaybe (transformGHCTyNSElt mname) [tc | GHCType.ATyCon tc <- tyths]
+        tycons  = lefts $ map snd nselts
+    return . Map.fromList $ zip tycons tycons
+  return $ case result of
+    Left errmsg  -> (Map.empty, Nothing)
+    Right answer -> (answer,    Just mname)
+  where handler :: (Monad m) => Control.Exception.SomeException -> m (
+          Map TyCon TyCon, Maybe Text)
+        handler _ = return (Map.empty, Nothing)
 
-preModuleAdditionalNames :: (Map Text PreObj, Map Text TyCon) -> Set Text
-preModuleAdditionalNames (preobjs, _) 
-  = mconcat . map (Map.keysSet . preObjAdditionalNames) . Map.elems $ preobjs
+----
 
-filterPreModule :: Map Text (Set Text) -> (Map Text PreObj, Map Text TyCon)
-                   -> (Map Text PreObj, Map Text TyCon)
-filterPreModule allowed (preobjs, tycs)
-  = (Map.filter (preObjUsesTypesFrom allowed) preobjs, tycs)
+modAncestry :: Text -> [Text]
+modAncestry = map (T.intercalate dot) . drop 1 . inits . T.splitOn dot
+  where dot       = T.singleton '.'
 
-preObjAdditionalNames :: PreObj -> Map Text (Set Text)
-preObjAdditionalNames (_, hst) = hsTypeAdditionalNames hst
+tyConOtherModsOfInterest :: TyCon -> Set Text
+tyConOtherModsOfInterest tyc = Set.fromList . modAncestry . tyConModule $ tyc
 
-preObjUsesTypesFrom :: Map Text (Set Text) -> PreObj -> Bool
-preObjUsesTypesFrom allowed obj = preObjAdditionalNames obj `mapSetSubset` allowed
+hsTypeOtherModsOfInterest :: HsType -> Set Text
+hsTypeOtherModsOfInterest hst = let
+  headPart = either tyConOtherModsOfInterest (const Set.empty) (typeHead hst)
+  in mconcat (headPart : map hsTypeOtherModsOfInterest (typeTail hst))
 
-mapSetSubset :: (Ord a, Ord b) => Map a (Set b) -> Map a (Set b) -> Bool
-mapSetSubset = Map.isSubmapOfBy (Set.isSubsetOf)
+preModuleOtherModsOfInterest :: (Map Text PreObj, Map Text TyNSElt) -> Set Text
+preModuleOtherModsOfInterest (preobjs, tynselts) 
+  = mconcat . map hsTypeOtherModsOfInterest $ (
+    (map snd $ Map.elems preobjs) ++ (rights $ Map.elems tynselts))
 
-hsTypeAdditionalNames :: HsType -> Map Text (Set Text)
-hsTypeAdditionalNames hst = let
-  headPart = either tyConAdditionalNames (const Map.empty) (typeHead hst)
-  in Map.unionsWith mappend (headPart : map hsTypeAdditionalNames (typeTail hst))
+----
 
-tyConAdditionalNames :: TyCon -> Map Text (Set Text)
-tyConAdditionalNames tyc = Map.fromList [(tyConModule tyc, Set.fromList [tyConName tyc])]
+canonicalizePreModuleTycs :: Map TyCon TyCon -> (Map Text PreObj, Map Text TyNSElt)
+                             -> (Map Text PreObj, Map Text TyNSElt)
+canonicalizePreModuleTycs canonMap (preobjs, tynselts)
+  = let canonicalizePreObj (code, hst) = (code, canonicalizeHsType hst)
+        canonicalizeTyNSElt = either Left (Right . canonicalizeHsType)
+        
+        canonicalizeHsType :: HsType -> HsType
+        canonicalizeHsType (HsType _ (Left tyc) tail _ _ _)
+         = mkHsType (Left $ canonicalizeTyc tyc) (map canonicalizeHsType tail)
+        canonicalizeHsType (HsType _ (Right vk) tail _ _ _)
+         = mkHsType (Right vk)                   (map canonicalizeHsType tail)
+        canonicalizeTyc tyc = Map.findWithDefault tyc tyc canonMap
+    in (Map.map canonicalizePreObj preobjs, Map.map canonicalizeTyNSElt tynselts)
+
+----
 
 ensureModulesInContext :: Set Text -> GhcMonad.Ghc ()
 ensureModulesInContext toEnsure = do
@@ -289,11 +364,6 @@ ensureModulesInContext toEnsure = do
     (GHC.IIDecl $ (GHC.simpleImportDecl . GHC.mkModuleName . T.unpack $ modName)  {
         GHC.ideclQualified = True})
     | modName <- Set.toList newImps] ++ curiis 
-
-wiredInAvailable = map (T.pack *** (Set.fromList . map T.pack)) $ [
-  --("GHC.Prim", ["(->)"]),
-  ("GHC.Types", ["[]"])
-  ]
 
 mkTupStr :: Int -> Int -> String
 mkTupStr low high = "(" ++ intercalate "," (map (('x':) . show) [low..high]) ++ ")"
@@ -311,31 +381,30 @@ accessBasics sess = do
       evalToPreObj (name, expr) = do
         exprTy <- GHC.exprType expr
         return $ do
-          hst <- transformGHCType exprTy
+          hst <- transformGHCType (T.pack "") False exprTy
           return (T.pack name, (T.pack expr, hst))
-  preobjs <- performGHCOps sess $ do
+  preobjs <- performGHCOps (Just "access primitive operations") sess $ do
     maybePreobjs <- mapM evalToPreObj basicsByName
     return . Map.fromList . catMaybes $ maybePreobjs
   Data.Traversable.mapM (createObj sess) preobjs
 
-importLibModules :: GhcMonad.Session -> [String] -> PythonM (
-  Map Text (Map Text Obj, Map Text TyCon))
+importLibModules :: GhcMonad.Session -> [Text] -> PythonM (
+  Map Text (Map Text Obj, Map Text TyNSElt))
 importLibModules sess names = do
-  preModules <- performGHCOps sess $ do
-    modContents <- mapM readGHCModule names
+  preModules <- performGHCOps Nothing sess $ do
+    modContents        <- mapM readGHCModule names
     let preModules0     = zipWith makePreModule names modContents
-        additionalNames = mconcat (map preModuleAdditionalNames preModules0)
-    availableNames     <- mapM readGHCModuleTypExpNames $ Set.toList additionalNames
-    let availableNames' = Map.fromListWith (Set.union) (availableNames ++ wiredInAvailable)
-    let preModules      = fmap (filterPreModule $ availableNames') preModules0
-        names'          = map T.pack names
-    ensureModulesInContext (additionalNames `mappend` Set.fromList names')
-    return preModules
+        additionalMods  = mconcat (map preModuleOtherModsOfInterest preModules0)
+    (canonMaps, okMds) <- unzip <$> mapM readGHCModuleTycCanon (Set.toList additionalMods)
+    ensureModulesInContext (Set.fromList $ names ++ catMaybes okMds)
+    let canonMap0       = foldr (Map.unionWith pickBestTyc) Map.empty canonMaps
+        canonMap        = Map.insert listTyCon listTyCon canonMap0
+    return $ fmap (canonicalizePreModuleTycs canonMap) preModules0
   modules     <- mapM (createModule sess) preModules
-  return . Map.fromList $ zip (map T.pack names) modules
+  return . Map.fromList $ zip names modules
 
-importSrcModules :: GhcMonad.Session -> [String] -> PythonM (
-  Map Text (Map Text Obj, Map Text TyCon))
+importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
+  Map Text (Map Text Obj, Map Text TyNSElt))
 importSrcModules names = tbd{-do
   logref <- liftIO $ newIORef ""
   dflags <- getSessionDynFlags

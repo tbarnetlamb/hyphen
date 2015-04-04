@@ -316,6 +316,12 @@ py_NotImplemented()
   Py_RETURN_NOTIMPLEMENTED;
 }
 
+HsPtr
+py_None()
+{
+  Py_RETURN_NONE;
+}
+
 
 /* --------------------------------------------------------------------- */
 
@@ -385,6 +391,10 @@ static PyGetSetDef TyCon_getsetters[] = {
                "The type constructor arity.",                            NULL},
   {"is_cls",  (getter)tycon_get_is_cls, unsettable,
                "Is this the type constructor of a class instance dict?", NULL},
+  {"visible_module",
+               (getter)tycon_get_visible_module,  unsettable,
+       "A preferred module in which the type constructor is visible, or None.",
+                                                                         NULL},
   {"kind",    (getter)tycon_getkind,    unsettable,
                "The type constructor kind.",                             NULL},
   {NULL}  /* Sentinel */

@@ -21,15 +21,27 @@ def marshall_name(data_namespace_contents, type_namespace_contents):
 
 def process_data_ns_item(name, item):
     if name[:1].isupper() or name[:1] == ':':
-        return hyphen.marshall_ctor.get_marshalled_dacon(datacon_tycon(item), name)
+        marshalled_dacon = hyphen.marshall_ctor.get_marshalled_dacon(
+            datacon_tycon(item), name, none_acceptable=False)
     else:
         return hyphen.marshall_obj_to_py.hs_to_py(item)
 
+def process_type_ns_item(name, item):
+    if isinstance(item, hyphen.hslowlevel.HsType):
+        def inner(*args):
+            assert len(args) == len(item.fvs)
+            subst = dict(("arg" + str(i), arg) for (i, arg) in enumerate(args))
+            return item.subst(**subst)
+        inner.__name__ = name
+        return inner
+    else:
+        return hyphen.marshall_ctor.marshall_tycon(item, none_acceptable=False)
+    
 def marshall_module(data_namespace, type_namespace, module_to_write):
     data_namespace = dict(
-        (k, process_data_ns_item(k, v))             for (k, v) in data_namespace.items())
+        (k, process_data_ns_item(k, v))  for (k, v) in data_namespace.items())
     type_namespace = dict(
-        (k, hyphen.marshall_ctor.marshall_tycon(v)) for (k, v) in type_namespace.items())
+        (k, process_type_ns_item(k, v))  for (k, v) in type_namespace.items())
     assert module_to_write is not None
     module_to_write._ = {}
     all_names = set(data_namespace) | set(type_namespace)
@@ -40,6 +52,9 @@ def marshall_module(data_namespace, type_namespace, module_to_write):
         module_to_write._[name]            = image
 
 expected_empty = ['Data', 'Control', 'Foreign', 'GHC']
+forced_empty   = [
+    'GHC' # takes ages to import this and it's almost never what you want
+    ]
 
 class HaskellFinderLoader():
     def find_module(self, module_name, path):
@@ -70,6 +85,8 @@ class HaskellFinderLoader():
             else:
                 haskell_name     = module_name[3:]
                 try:
+                    if haskell_name in forced_empty:
+                        assert False
                     data_ns, type_ns = fetch_lib_module(haskell_name)
                 except Exception as e:
                     if haskell_name in expected_empty:

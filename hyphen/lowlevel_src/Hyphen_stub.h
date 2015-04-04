@@ -9,6 +9,7 @@ extern HsPtr tycon_str(HsPtr a1);
 extern HsPtr tycon_repr(HsPtr a1);
 extern HsPtr tycon_getname(HsPtr a1, HsPtr a2);
 extern HsPtr tycon_getmodule(HsPtr a1, HsPtr a2);
+extern HsPtr tycon_get_visible_module(HsPtr a1, HsPtr a2);
 extern HsPtr tycon_getpackage(HsPtr a1, HsPtr a2);
 extern HsPtr tycon_getarity(HsPtr a1, HsPtr a2);
 extern HsPtr tycon_get_is_cls(HsPtr a1, HsPtr a2);

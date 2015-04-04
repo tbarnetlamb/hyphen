@@ -45,5 +45,9 @@ def hs_to_py(obj):
         (processed, result) = hook(obj)
         if processed:
             return result
-    return hyphen.marshall_ctor.marshall_tycon(tycon).interpret(obj)
+    tyc_class = hyphen.marshall_ctor.marshall_tycon(tycon)
+    if tyc_class is None:
+        return hslowlevel.HsObjRaw.__new__(HsObj, obj)
+    else:
+        return tyc_class.interpret(obj)
 

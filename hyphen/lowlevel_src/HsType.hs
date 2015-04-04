@@ -8,7 +8,9 @@ module HsType where
 --import Debug.Trace
 import Control.Applicative hiding ((<|>))
 import Control.Monad
+import Control.Monad.RWS
 import Control.DeepSeq
+import Data.List
 import Data.Typeable    (TypeRep)
 import Data.Hashable
 import Data.Text        (Text)
@@ -142,6 +144,12 @@ breakFnType (HsType {typeHead=Left tc, typeTail=[fr, to]})
 breakFnType ty = report $ "Trying to apply object of type '" ++ T.unpack (typeName ty)
                  ++ "', but this is not a function type."
 
+breakFnTypeRec :: HsType -> ([HsType], HsType)
+breakFnTypeRec hst = go hst []
+  where go hst sofar = case breakFnType hst of
+          Left  _         -> (reverse sofar, hst)
+          Right (fr, to)  -> go to (fr:sofar)
+
 breakFnTypeUnsafe :: HsType -> (HsType, HsType)
 breakFnTypeUnsafe (HsType {typeHead=Left tc, typeTail=[fr, to]}) 
   | tc == fnTyCon = (fr, to)
@@ -201,3 +209,64 @@ hsTypeRepr hst
       Left   tyc     -> T.concat $ [
         tyConRepr tyc, T.pack "(", T.intercalate (T.pack ", ") tailRep, T.pack ")"]
                            
+                        
+type TypeForcerM = RWS () [(Text, Text)] (Int, Int)
+
+makeXVar :: TypeForcerM Text
+makeXVar = do (i0, i1) <- get
+              put (i0, i1+1)
+              return $ T.concat [T.pack "x", T.pack $ show i1]
+
+makeAVar :: TypeForcerM Text
+makeAVar = do (i0, i1) <- get
+              put (i0+1, i1)
+              return $ T.concat [T.pack "a", T.pack $ show i0]
+
+emitConstraint :: (Text, Text) -> TypeForcerM ()
+emitConstraint pair = tell [pair]
+
+makeTypeHeadForcer :: HsType -> TypeForcerM Text
+makeTypeHeadForcer hst = case typeHead hst of
+  Right (Var v, k) 
+    -> error "makeTypeForcer: expected monomorphic type"
+  Left tyc@(TyCon {tyConName      = oname,
+                   tyConLocation = (InExplicitModuleNamed mname)})
+    -> if isTupTyCon tyc || isListTyCon tyc || tyc == fnTyCon
+         then return oname
+         else return $ T.concat [mname, T.pack ".", oname]
+  Left (TyCon {tyConLocation = (ImplicitlyVia tycLocObj False tycLocPath)})
+    -> do var <- makeXVar
+          pp  <- processPath var tycLocPath
+          emitConstraint (tycLocObj, pp)
+          return var
+  Left (TyCon {tyConLocation = (ImplicitlyVia tycLocTyp True  tycLocPath)})
+    -> do var <- makeXVar
+          pp  <- processPath var tycLocPath
+          emitConstraint (T.concat [T.pack "(undefined :: ", tycLocTyp, T.pack ")"], pp)
+          return var
+
+makeTypeForcerM :: HsType -> TypeForcerM Text
+makeTypeForcerM hst =
+  do headImg <- makeTypeHeadForcer hst
+     tailImg <- mapM makeTypeForcerM $ typeTail hst
+     return . bracket . T.unwords $ headImg : tailImg
+
+processPath :: Text -> [Int] -> TypeForcerM Text
+processPath v [i] = do
+  tail <- sequence $ genericReplicate i makeAVar
+  return . bracket . T.unwords $ v : tail  
+processPath v (i:is@(_:_)) = do
+  hVar <- makeAVar
+  mid  <- processPath v is
+  tail <- sequence $ genericReplicate i makeAVar
+  return . bracket . T.unwords $ hVar : mid : tail
+
+makeTypeForcer :: HsType -> Text
+makeTypeForcer hst = let
+  (expr, _, constraints) = runRWS (makeTypeForcerM hst) () (0, 0)
+  nConstr   = length constraints
+  core      = bracket . T.concat $ (
+    (replicate nConstr $ T.pack "Prelude.const Prelude.$ ") ++ [T.pack "Prelude.id"])
+  typedCore = bracket . T.unwords $ (
+    [core, T.pack "::"] ++ intersperse (T.pack "->") (map snd constraints ++ [expr, expr]))
+  in bracket . T.unwords $ typedCore : map fst constraints
