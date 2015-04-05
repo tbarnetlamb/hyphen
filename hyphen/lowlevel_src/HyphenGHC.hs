@@ -217,6 +217,8 @@ createObj sess (code, orig_type) = do
           Nothing    -> do
             let to_eval = T.unpack . T.concat $ [
                   T.pack "(", makeTypeForcer hst, T.pack " (", code, T.pack "))"]
+            --let to_eval = T.unpack . T.concat $ [
+            --      T.pack "((", code, T.pack ") :: ", typeName hst, T.pack ")"]
             made <- performGHCOps (Just $ "evaluate " ++ to_eval) sess (
               GHC.compileExpr to_eval)
             lift . atomicModifyIORef memoTable $ \oldTable ->
@@ -304,6 +306,7 @@ readGHCModule name = do
 
 readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (Map TyCon TyCon, Maybe Text)
 readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
+  --GHCMonadUtils.liftIO $ print mname
   result <- reportingGHCErrors Nothing $ do
     tyths      <- readGHCModule mname
     let nselts  = mapMaybe (transformGHCTyNSElt mname) [tc | GHCType.ATyCon tc <- tyths]
@@ -319,8 +322,10 @@ readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
 ----
 
 modAncestry :: Text -> [Text]
-modAncestry = map (T.intercalate dot) . drop 1 . inits . T.splitOn dot
+modAncestry mod = map (T.intercalate dot) . drop n . inits . T.splitOn dot $ mod
   where dot       = T.singleton '.'
+        n | T.take 4 mod == T.pack "GHC." = 2
+          | otherwise                     = 1
 
 tyConOtherModsOfInterest :: TyCon -> Set Text
 tyConOtherModsOfInterest tyc = Set.fromList . modAncestry . tyConModule $ tyc
