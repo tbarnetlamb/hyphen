@@ -7,13 +7,15 @@ module Pythonate where
 
 import Control.Monad.State.Strict
 import Data.Word
-import Data.Text        (Text)
-import Data.ByteString  (ByteString)
-import Data.Map.Strict  (Map)
+import Data.Text           (Text)
+import Data.ByteString     (ByteString)
+import Data.HashMap.Strict (HashMap)
+import Data.Map.Strict     (Map)
 import Foreign.Ptr
-import Foreign.C.String (CString)
+import Foreign.C.String    (CString)
 import qualified Data.Text            as T
 import qualified Data.Map.Strict      as Map
+import qualified Data.HashMap.Strict  as HashMap
 import qualified Data.Text.Foreign
 import qualified Data.Text.Lazy
 import qualified Data.Text.Lazy.Builder
@@ -59,9 +61,10 @@ pythonateInteger      i
   where pythonateIntegerFromStr' ptr i16 
           = pythonateIntegerFromStr ptr (fromInteger $ toInteger i16)
 
-pythonateDict :: (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> Map a b
-                 -> PythonM PyObj
-pythonateDict kfn vfn map = do
+pythonateDictCore :: (d a b -> [(a, b)])
+                     -> (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> d a b
+                     -> PythonM PyObj
+pythonateDictCore enumfn kfn vfn map = do
   let addKVPair dict (key, val) = do
         key_pyo <- kfn key
         releasingOnFail key_pyo $ do
@@ -70,7 +73,15 @@ pythonateDict kfn vfn map = do
             treatingAsErr (-1) $ pyDict_SetItem dict key_pyo val_pyo
   
   newDict <- treatingAsErr nullPyObj pyDict_New
-  releasingOnFail newDict ((mapM (addKVPair newDict) $ Map.toList map) >> return newDict)
+  releasingOnFail newDict ((mapM (addKVPair newDict) $ enumfn map) >> return newDict)
+
+pythonateDict :: (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> Map a b
+                 -> PythonM PyObj
+pythonateDict = pythonateDictCore Map.toList
+
+pythonateHDict :: (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> HashMap a b
+                  -> PythonM PyObj
+pythonateHDict = pythonateDictCore HashMap.toList
 
 pythonateTuple :: [PythonM PyObj] -> PythonM PyObj
 pythonateTuple list = do

@@ -18,7 +18,7 @@ import Data.Either
 import Data.List
 import Data.Text                      (Text)
 import Data.Set                       (Set)
-import Data.Map.Strict                (Map)
+import Data.HashMap.Strict            (HashMap)
 import qualified Control.Exception
 import qualified Data.Text            as T
 import qualified Data.Set             as Set
@@ -235,8 +235,8 @@ transformGHCId import_module i = do
   hst <- transformGHCType fullN False $ GHC.idType i
   return (oname, (fullN, hst))
 
-dataConSpecials :: Map Text (Text, Text)
-dataConSpecials = Map.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
+dataConSpecials :: HashMap Text (Text, Text)
+dataConSpecials = HashMap.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
   ("GHC.Tuple.()"                ,("()",                "(:[])")),
   ("GHC.Tuple.(,)"               ,("(,)",               "(:[])")),
   ("GHC.Tuple.(,,)"              ,("(,,)",              "(:[])")),
@@ -271,7 +271,7 @@ transformGHCDataCon import_module dc = fromMaybe [] $ do
       vars    = [T.pack ("a" ++ show i) | i <- [0..ntypes-1]]
       commaVars = T.intercalate (T.pack ", ") $ take ntypes' vars
       spaceVars = T.unwords vars
-  return $ case Map.lookup fullnam dataConSpecials of 
+  return $ case HashMap.lookup fullnam dataConSpecials of 
     Nothing -> [
       (oname, (fullnam, dctyp)), 
       (T.concat [T.pack "*co-", oname], (T.concat [
@@ -286,13 +286,13 @@ transformGHCTyThing im (GHCType.ADataCon dc) = (transformGHCDataCon im dc,      
 transformGHCTyThing im (GHCType.ATyCon   tc) = ([], maybeToList (transformGHCTyNSElt im tc))
 transformGHCTyThing _  _                     = ([],                                      [])
 
-makePreModule :: Text -> [GHC.TyThing] -> (Map Text PreObj, Map Text TyNSElt)
+makePreModule :: Text -> [GHC.TyThing] -> (HashMap Text PreObj, HashMap Text TyNSElt)
 makePreModule im tyths = let
   (objs, tynselts) = mconcat (map (transformGHCTyThing im) tyths)
-  in (Map.fromList objs, Map.fromList tynselts)
+  in (HashMap.fromList objs, HashMap.fromList tynselts)
 
-createModule :: GhcMonad.Session -> (Map Text PreObj, Map Text TyNSElt) -> 
-              PythonM (Map Text Obj, Map Text TyNSElt)
+createModule :: GhcMonad.Session -> (HashMap Text PreObj, HashMap Text TyNSElt) -> 
+              PythonM (HashMap Text Obj, HashMap Text TyNSElt)
 createModule sess (preobjs, tynselts) = do
   objs <- Data.Traversable.mapM (createObj sess) preobjs
   return (objs, tynselts)
@@ -304,20 +304,20 @@ readGHCModule name = do
   infos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
   return [a |  Just (a, _, _) <- infos]
 
-readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (Map TyCon TyCon, Maybe Text)
+readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (HashMap TyCon TyCon, Maybe Text)
 readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
   --GHCMonadUtils.liftIO $ print mname
   result <- reportingGHCErrors Nothing $ do
     tyths      <- readGHCModule mname
     let nselts  = mapMaybe (transformGHCTyNSElt mname) [tc | GHCType.ATyCon tc <- tyths]
         tycons  = lefts $ map snd nselts
-    return . Map.fromList $ zip tycons tycons
+    return . HashMap.fromList $ zip tycons tycons
   return $ case result of
-    Left errmsg  -> (Map.empty, Nothing)
+    Left errmsg  -> (HashMap.empty, Nothing)
     Right answer -> (answer,    Just mname)
   where handler :: (Monad m) => Control.Exception.SomeException -> m (
-          Map TyCon TyCon, Maybe Text)
-        handler _ = return (Map.empty, Nothing)
+          HashMap TyCon TyCon, Maybe Text)
+        handler _ = return (HashMap.empty, Nothing)
 
 ----
 
@@ -335,15 +335,15 @@ hsTypeOtherModsOfInterest hst = let
   headPart = either tyConOtherModsOfInterest (const Set.empty) (typeHead hst)
   in mconcat (headPart : map hsTypeOtherModsOfInterest (typeTail hst))
 
-preModuleOtherModsOfInterest :: (Map Text PreObj, Map Text TyNSElt) -> Set Text
+preModuleOtherModsOfInterest :: (HashMap Text PreObj, HashMap Text TyNSElt) -> Set Text
 preModuleOtherModsOfInterest (preobjs, tynselts) 
   = mconcat . map hsTypeOtherModsOfInterest $ (
-    (map snd $ Map.elems preobjs) ++ (rights $ Map.elems tynselts))
+    (map snd $ HashMap.elems preobjs) ++ (rights $ HashMap.elems tynselts))
 
 ----
 
-canonicalizePreModuleTycs :: Map TyCon TyCon -> (Map Text PreObj, Map Text TyNSElt)
-                             -> (Map Text PreObj, Map Text TyNSElt)
+canonicalizePreModuleTycs :: HashMap TyCon TyCon -> (HashMap Text PreObj, HashMap Text TyNSElt)
+                             -> (HashMap Text PreObj, HashMap Text TyNSElt)
 canonicalizePreModuleTycs canonMap (preobjs, tynselts)
   = let canonicalizePreObj (code, hst) = (code, canonicalizeHsType hst)
         canonicalizeTyNSElt = either Left (Right . canonicalizeHsType)
@@ -353,8 +353,8 @@ canonicalizePreModuleTycs canonMap (preobjs, tynselts)
          = mkHsType (Left $ canonicalizeTyc tyc) (map canonicalizeHsType tail)
         canonicalizeHsType (HsType _ (Right vk) tail _ _ _)
          = mkHsType (Right vk)                   (map canonicalizeHsType tail)
-        canonicalizeTyc tyc = Map.findWithDefault tyc tyc canonMap
-    in (Map.map canonicalizePreObj preobjs, Map.map canonicalizeTyNSElt tynselts)
+        canonicalizeTyc tyc = HashMap.lookupDefault tyc tyc canonMap
+    in (HashMap.map canonicalizePreObj preobjs, HashMap.map canonicalizeTyNSElt tynselts)
 
 ----
 
@@ -380,7 +380,7 @@ basicsByName = (
   [("tup" ++ show n ++ "tail", "\\ " ++ mkTupStr 1 n ++ " -> " ++ mkTupStr 2 n)
   | n<-[2..15]])
 
-accessBasics :: GhcMonad.Session -> PythonM (Map Text Obj)
+accessBasics :: GhcMonad.Session -> PythonM (HashMap Text Obj)
 accessBasics sess = do
   let evalToPreObj :: (String, String) -> GhcMonad.Ghc (Maybe (Text, PreObj))
       evalToPreObj (name, expr) = do
@@ -390,11 +390,11 @@ accessBasics sess = do
           return (T.pack name, (T.pack expr, hst))
   preobjs <- performGHCOps (Just "access primitive operations") sess $ do
     maybePreobjs <- mapM evalToPreObj basicsByName
-    return . Map.fromList . catMaybes $ maybePreobjs
+    return . HashMap.fromList . catMaybes $ maybePreobjs
   Data.Traversable.mapM (createObj sess) preobjs
 
 importLibModules :: GhcMonad.Session -> [Text] -> PythonM (
-  Map Text (Map Text Obj, Map Text TyNSElt))
+  HashMap Text (HashMap Text Obj, HashMap Text TyNSElt))
 importLibModules sess names = do
   preModules <- performGHCOps Nothing sess $ do
     modContents        <- mapM readGHCModule names
@@ -402,14 +402,14 @@ importLibModules sess names = do
         additionalMods  = mconcat (map preModuleOtherModsOfInterest preModules0)
     (canonMaps, okMds) <- unzip <$> mapM readGHCModuleTycCanon (Set.toList additionalMods)
     ensureModulesInContext (Set.fromList $ names ++ catMaybes okMds)
-    let canonMap0       = foldr (Map.unionWith pickBestTyc) Map.empty canonMaps
-        canonMap        = Map.insert listTyCon listTyCon canonMap0
+    let canonMap0       = foldr (HashMap.unionWith pickBestTyc) HashMap.empty canonMaps
+        canonMap        = HashMap.insert listTyCon listTyCon canonMap0
     return $ fmap (canonicalizePreModuleTycs canonMap) preModules0
   modules     <- mapM (createModule sess) preModules
-  return . Map.fromList $ zip names modules
+  return . HashMap.fromList $ zip names modules
 
 importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
-  Map Text (Map Text Obj, Map Text TyNSElt))
+  HashMap Text (HashMap Text Obj, HashMap Text TyNSElt))
 importSrcModules names = tbd{-do
   logref <- liftIO $ newIORef ""
   dflags <- getSessionDynFlags

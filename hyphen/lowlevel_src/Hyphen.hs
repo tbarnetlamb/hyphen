@@ -18,17 +18,18 @@ import Data.Word
 import Data.Maybe
 import Data.Hashable
 import Data.Char
-import Data.Typeable     (Typeable, typeOf)
-import Data.Text         (Text)
-import Data.ByteString   (ByteString)
-import Data.Map.Strict   (Map)
-import Foreign           (newForeignPtr, withForeignPtr)
-import Foreign.StablePtr (deRefStablePtr, newStablePtr, StablePtr)
+import Data.Typeable       (Typeable, typeOf)
+import Data.Text           (Text)
+import Data.ByteString     (ByteString)
+import Data.Map.Strict     (Map)
+import Data.HashMap.Strict (HashMap)
+import Foreign             (newForeignPtr, withForeignPtr)
+import Foreign.StablePtr   (deRefStablePtr, newStablePtr, StablePtr)
 import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Marshal.Alloc
-import Foreign.C.String  (CString, withCString)
-import System.IO.Unsafe  (unsafePerformIO)
+import Foreign.C.String    (CString, withCString)
+import System.IO.Unsafe    (unsafePerformIO)
 import qualified Data.Text            as T
 import qualified Data.Map.Strict      as Map
 import qualified Data.Text.Foreign
@@ -506,14 +507,14 @@ buildHaskellDouble   = formSimpleHsObjRaw
 
 ------------------------------------------------------------------
 
-pythonateModuleRet :: (Map Text Obj, Map Text TyNSElt) -> PythonM PyObj
+pythonateModuleRet :: (HashMap Text Obj, HashMap Text TyNSElt) -> PythonM PyObj
 pythonateModuleRet (objs, tycelts) = pythonateTuple [
   prepareDict (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs, 
   prepareDict (treatingAsErr nullPyObj . either wrapPythonTyCon wrapPythonHsType) tycelts]
-  where prepareDict = pythonateDict (treatingAsErr nullPyObj . pythonateText)
+  where prepareDict = pythonateHDict (treatingAsErr nullPyObj . pythonateText)
 
 wrapImport :: (GhcMonad.Session -> [Text] -> 
-               MaybeT IO (Map Text (Map Text Obj, Map Text TyNSElt)))
+               MaybeT IO (HashMap Text (HashMap Text Obj, HashMap Text TyNSElt)))
               -> WStPtr -> PyObj -> IO PyObj
 wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   sess  <- lift $ deRefStablePtr (
@@ -527,7 +528,7 @@ wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . run
         unless ok $ pyTypeErr'' ("string as argument " ++ show idx) pyobj
         textFromPythonObj pyobj
   allSrcsList <- mapM getArgChecked [1..nArgs]
-  pythonateDict (treatingAsErr nullPyObj . pythonateText) pythonateModuleRet
+  pythonateHDict (treatingAsErr nullPyObj . pythonateText) pythonateModuleRet
     =<< (i_fn sess allSrcsList)
 
 foreign export ccall prepare_GHC_state :: Ptr WStPtr -> IO Int
@@ -559,7 +560,7 @@ hyphen_access_basics_core stableSessionPtr pyargsTuple =
     nArgs <- treatingAsErr (-1) $ pyTuple_Size pyargsTuple
     check (nArgs == 0) $ "hyphen.hyphen_import_src: no arguments expected."
     objs <- accessBasics sess
-    pythonateDict (treatingAsErr nullPyObj . pythonateText)
+    pythonateHDict (treatingAsErr nullPyObj . pythonateText)
       (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs
 
 foreign export ccall ok_python_identif      :: PyObj -> PyObj -> IO PyObj
