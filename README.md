@@ -7,10 +7,10 @@ Hackage, which allows Haskell code to access Python modules.
 
 For instance:
 
-  >>> import hyphen, hs.Prelude
-  >>> hs.Prelude.drop(1, [1,2,3])
-  <hs.GHC.Types.[] object of Haskell type [GHC.Integer.Integer], containing '[2,3]'>
-  >>> list(hs.Prelude.drop(1, [1,2,3]))
-  [2, 3]
-  >>> hs.Prelude.id(3)
-  3
+    >>> import hyphen, hs.Prelude
+    >>> hs.Prelude.drop(1, [1,2,3])
+    <hs.GHC.Types.[] object of Haskell type [GHC.Integer.Integer], containing '[2,3]'>
+    >>> list(hs.Prelude.drop(1, [1,2,3]))
+    [2, 3]
+    >>> hs.Prelude.id(3)
+    3
