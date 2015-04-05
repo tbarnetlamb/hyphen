@@ -13,7 +13,8 @@ from hyphen.utils  import (
     hs_setElems, hs_sizeOfSet, hs_setMember, hs_mapKeys, hs_mapPairs, hs_sizeOfMap,
     hs_mapLookup, hs_isJust, hs_fromJust, hs_emptyList, hs_null, hs_head, hs_tail,
     break_hs_fn_type, make_hs_fn_type, first_arg_type, datacon_tycon, const_fn,
-    hs_tupletycs_bylength, break_haskell_tuple, enumerate_fresh_vars_outside)
+    hs_tupletycs_bylength, break_haskell_tuple, enumerate_fresh_vars_outside,
+    hs_compose, hs_not)
 
 marshall_cache = {}
 
@@ -164,7 +165,8 @@ def tuple_getitem(self, idx):
 tycon_specials = {
     hs_List : {
         "__iter__"    : iterate_hslist,
-        "__nonzero__" : member_from_unary_hsfn(hs_emptyList),
+        "__bool__"    : member_from_unary_hsfn(hslowlevel.apply(
+            hs_compose, hs_not, hs_null))
         },
     hs_Map : {
         "__getitem__" : map_lookup,
@@ -187,7 +189,7 @@ tycon_specials = {
         "NAME"        : "HsFunObj",
         },
     hs_Maybe : {
-        "__nonzero__" : member_from_unary_hsfn(hs_isJust),
+        "__bool__"    : member_from_unary_hsfn(hs_isJust),
         }
     }
 

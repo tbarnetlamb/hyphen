@@ -21,7 +21,7 @@ def marshall_name(data_namespace_contents, type_namespace_contents):
 
 def process_data_ns_item(name, item):
     if name[:1].isupper() or name[:1] == ':':
-        marshalled_dacon = hyphen.marshall_ctor.get_marshalled_dacon(
+        return hyphen.marshall_ctor.get_marshalled_dacon(
             datacon_tycon(item), name, none_acceptable=False)
     else:
         return hyphen.marshall_obj_to_py.hs_to_py(item)
@@ -63,7 +63,7 @@ class HaskellFinderLoader():
         elif module_name == 'hs':
             return self
         else:
-            return False
+            return None
 
     def load_module(self, module_name):
         assert module_name.startswith('hs.') or module_name == 'hs'

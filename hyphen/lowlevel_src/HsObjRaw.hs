@@ -7,9 +7,11 @@ module HsObjRaw (PolyObjCore(..), Obj(..), objType, formObjOfType, formObjSimple
                  transformObjTypes, transformObjTypes', resolveToType, alignTypes,
                  applyMono, apply, makeMonomorphic, tryMakeMonomorphic, doIO) where
 
+--import Debug.Trace
 import Control.Applicative hiding ((<|>))
 import Control.Arrow
 import Control.Monad
+--import Control.Monad.Trans.Class
 import Data.Typeable    (Typeable, typeOf)
 import Data.Monoid
 import Data.Maybe
@@ -38,6 +40,12 @@ data Obj =
     polyObjCore          :: PolyObjCore,
     polyObjAppliedTo     :: [Obj]
     }
+
+debugDumpObj :: Obj -> Text
+debugDumpObj (MonoObj hst _) = bracket $ T.unwords [T.pack "MonoObj", typeName hst]
+debugDumpObj (PolyObj ft ct _ ato) = bracket $ T.unwords [
+  T.pack "PolyObj", bracket $ typeName ft, bracket $ typeName ct, T.concat (
+     T.pack "[" : intersperse (T.pack ", ") (map debugDumpObj ato) ++ [T.pack "]"])]
 
 objType :: Obj -> HsType
 objType (MonoObj t _)                  = t
@@ -127,7 +135,9 @@ alignTypes (o1, os) = do
              T.unpack (typeName t1)) Right unify_result
   let simplifySubst  = simplifyFVs $ typeFreeVars totalTypeRaw
       totalType      = mapVars (simplifySubst Map.!) totalTypeRaw
-      subst          = mapVars (simplifySubst Map.!) <$> substRaw
+      fullSubstRaw   = Map.union substRaw $ Map.fromList [
+        (v, mkHsType (Right (v, k)) []) | (v, k) <- Map.toList (typeFreeVars totalTypeRaw)]
+      subst          = mapVars (simplifySubst Map.!) <$> fullSubstRaw
       resultType     = fromMaybe (error "alignTypes: internal err")
                        $ Map.lookup ellipsisVar subst
       substsByPref   = cleaveMap separateVarPrefix subst
@@ -170,8 +180,8 @@ apply fn_orig args_orig = do
   (fn, args, resultType) <- promoteErr $ alignTypes (fn_orig, args_orig)
   case fn of
     PolyObj {} -> tryMakeMonomorphic $
-      (fn {polyObjFinalType  =resultType,
-           polyObjAppliedTo  =polyObjAppliedTo fn ++ args})
+        (fn {polyObjFinalType  =resultType,
+             polyObjAppliedTo  =polyObjAppliedTo fn ++ args})
     MonoObj _ _ -> do
       args'  <- mapM makeMonomorphicUnsafe args
       return $ foldl applyMono fn args'
@@ -185,8 +195,12 @@ makeMonomorphic obj@(PolyObj {})
        return . Just $ foldl applyMono coreMono appliedToMono
 makeMonomorphic _ = return Nothing
 
-makeMonomorphicUnsafe obj = fromMaybe (error "makeMonomorphicUnsafe:not monomorphic")
-                               <$> makeMonomorphic obj
+makeMonomorphicUnsafe obj = do
+  res <- makeMonomorphic obj
+  case res of
+    Just res' -> return res'
+    Nothing   -> pyTypeErr' (
+      "makeMonomorphicUnsafe:not monomorphic: " ++ (T.unpack $ debugDumpObj obj))
 
 tryMakeMonomorphic :: Obj -> PythonM Obj
 tryMakeMonomorphic o = fromMaybe o <$> makeMonomorphic o

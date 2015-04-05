@@ -2,7 +2,7 @@ from __future__   import absolute_import
 
 from functools    import total_ordering
 from hyphen       import hslowlevel
-from hyphen.utils import hs_fn_type, hs_eq, hs_hash, hs_show, hs_lt
+from hyphen.utils import hs_fn_type, hs_eq, hs_hash, hs_show, hs_lt, hs_Func
 import hyphen
 
 @total_ordering
@@ -53,8 +53,11 @@ class HsObj(hslowlevel.HsObjRaw):
             raise TypeError("Cannot construct HsObj's directly")
         elif cls.hs_dacon == 'BLANK_IN_TYCONS':
             return cls.hs_tycon(*args)
-        return hslowlevel.HsObjRaw.__new__(cls, hyphen.marshall_ctor.applyFromPyArgs(
-            cls.hs_dacon, *args))
+        if cls.hs_dacon.hstype.head == hs_Func:
+            return hslowlevel.HsObjRaw.__new__(cls, hyphen.marshall_ctor.applyFromPyArgs(
+                cls.hs_dacon, *args))
+        else:
+            return hslowlevel.HsObjRaw.__new__(cls, cls.hs_dacon)
 
     def _is_polymorphic(self):
         return len(self.fvs) == 0

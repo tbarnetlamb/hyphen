@@ -36,6 +36,8 @@ hs_tail      = fetch_lib_module('Prelude'        )[0]['tail']
 hs_show      = fetch_lib_module('Prelude'        )[0]['show']
 hs_eq        = fetch_lib_module('Prelude'        )[0]['==']
 hs_lt        = fetch_lib_module('Prelude'        )[0]['<']
+hs_not       = fetch_lib_module('Prelude'        )[0]['not']
+hs_compose   = fetch_lib_module('Prelude'        )[0]['.']
 hs_hash      = fetch_lib_module('Data.Hashable'  )[0]['hash']
 
 def return_type_when_saturated(hstype):
