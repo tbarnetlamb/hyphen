@@ -2,6 +2,10 @@ from __future__ import absolute_import
 
 import hyphen.hslowlevel         as hslowlevel
 import hyphen.caches             as caches
+caches.precache_modules([
+    "Prelude", "Data.Complex", "Data.Maybe", "Data.Set", "Data.Map", "Data.Map.Strict",
+    "Data.Hashable", "GHC.Types", "GHC.Prim", "Data.Either", "Data.Text", "Data.ByteString"])
+
 import hyphen.utils              as utils
 import hyphen.wrapping_pyfns     as wrapping_pyfns
 import hyphen.hsobj              as hsobj

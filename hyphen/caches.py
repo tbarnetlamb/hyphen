@@ -12,3 +12,6 @@ def fetch_lib_module(name):
     else:
         result = module_cache[name] = hslowlevel.import_lib(name)[name]
     return result
+
+def precache_modules(names):
+    module_cache.update(hslowlevel.import_lib(*names))
