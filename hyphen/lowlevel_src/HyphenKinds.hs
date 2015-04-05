@@ -44,7 +44,7 @@ kindParser = do first <- atomicKindParser
 kindFromText :: Text -> Either ErrMsg Kind
 kindFromText txt = case parse (spaces *> kindParser <* eof) "" txt of
   Right kind -> return kind
-  Left  err  -> (Left . ErrMsg . T.pack . 
+  Left  err  -> (Left . ErrMsg . T.pack .
                  (("Failed to interpret kind string "++T.unpack txt++")")++) . show) err
 
 instance Hashable (Kind) where
@@ -52,4 +52,3 @@ instance Hashable (Kind) where
 
 instance NFData (Kind) where
   rnf (Kind ks) = rnf ks
-

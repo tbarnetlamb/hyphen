@@ -13,7 +13,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.State.Strict
 import Control.Exception (
   SomeException, toException, Exception, Handler(..), catches, AsyncException(..),
-  ArithException(..), NoMethodError(..), RecConError(..), RecSelError(..), 
+  ArithException(..), NoMethodError(..), RecConError(..), RecSelError(..),
   RecUpdError(..))
 import Data.Typeable (Typeable, typeOf)
 import Foreign.Storable
@@ -54,7 +54,7 @@ translatePyException = alloca (
                 Exception.throwIO ex
               _                            -> return ()
         Exception.throwIO =<< (
-          return PyException `ap` (peek store_type) `ap` (peek store_value) 
+          return PyException `ap` (peek store_type) `ap` (peek store_value)
                              `ap` (peek store_trace))
         )))
 
@@ -66,13 +66,13 @@ translatingHsExcepts = MaybeT . flip catches handlers . runMaybeT
   where
     handlers = [
       Handler (\ (PyException ty val tr) -> pyErr_Restore ty val tr >> return Nothing),
-      Handler (\ e -> case e of 
+      Handler (\ e -> case e of
                   StackOverflow -> setPyExc exHsException        e
                   HeapOverflow  -> pyErr_NoMemory >> return Nothing
                   ThreadKilled  -> setPyExc exHsException        e
                   UserInterrupt -> setPyExc exKeyboardInterrupt  e
                   ),
-      Handler (\ e -> case e of 
+      Handler (\ e -> case e of
                   Overflow      -> setPyExc exOverflowError      e
                   DivideByZero  -> setPyExc exZeroDivisionError  e
                   _             -> setPyExc exFloatingPointError e
@@ -100,15 +100,14 @@ setPyExcRaw exTyFn pyExArgs e = (>> return Nothing) . runMaybeT $ do
       hsExc  <- (formSimpleHsObjRaw :: SomeException -> IO PyObj) $ toException e
       unless (hsExc == nullPyObj) $ do
         retval <- pyObject_SetAttr exc str hsExc
-        unless (retval == (-1)) $ 
+        unless (retval == (-1)) $
           pyErr_SetObject exTy exc
         py_DECREF hsExc
       py_DECREF str
     py_DECREF exc
 
 setSystemExit :: ExitCode -> IO (Maybe x)
-setSystemExit ecode = 
+setSystemExit ecode =
   setPyExcRaw exSystemExit [treatingAsErr nullPyObj . pythonateInt $ codeOf ecode] ecode
   where codeOf (ExitFailure i) = i
         codeOf (ExitSuccess)   = 0
-

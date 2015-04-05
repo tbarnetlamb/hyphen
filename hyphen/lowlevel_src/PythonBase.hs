@@ -79,7 +79,7 @@ pyTypeErr' = (>> mzero) . lift . pyTypeErr . T.pack
 
 check  :: Bool    -> String -> PythonM () {- check cond on pain of TypeError -}
 check cond = unless cond . pyTypeErr'
-      
+
 checkM :: IO Bool -> String -> PythonM () {- check cond on pain of TypeError -}
 checkM cond str = do cond' <- lift cond
                      check cond' str
@@ -98,4 +98,3 @@ releasingOnFail :: PyObj -> PythonM a -> PythonM a
 releasingOnFail to_release act = MaybeT (releaseOnNothing =<< runMaybeT act)
   where releaseOnNothing Nothing = py_DECREF to_release >> return Nothing
         releaseOnNothing other   = return other
-

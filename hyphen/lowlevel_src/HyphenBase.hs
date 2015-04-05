@@ -30,7 +30,7 @@ castStablePtrToPtr = WStPtr . Foreign.StablePtr.castStablePtrToPtr
 tbd = undefined
 
 cleaveMap    :: (Ord k, Ord k1, Ord k2) => (k -> (k1, k2)) -> Map k v -> Map k1 (Map k2 v)
-cleaveMap fn = 
+cleaveMap fn =
   (fmap Map.fromList) . Map.fromListWith (++) . (map $ shuffle . first fn) . Map.toList
   where shuffle ((k1, k2), v) = (k1, [(k2, v)])
 
@@ -47,8 +47,8 @@ report = Left . ErrMsg . T.pack :: String -> Either ErrMsg a
                  return res
 
 okPythonIdentif :: Text -> Bool
-okPythonIdentif name 
-  = (not $ T.null name) && okHead (T.head name) && T.all okCont (T.drop 1 name) 
+okPythonIdentif name
+  = (not $ T.null name) && okHead (T.head name) && T.all okCont (T.drop 1 name)
   where
     okHead ch = ch == '_' || case generalCategory ch of
       UppercaseLetter -> True
@@ -58,7 +58,7 @@ okPythonIdentif name
       OtherLetter     -> True
       LetterNumber    -> True
       _               -> False
-    okCont ch = case generalCategory ch of 
+    okCont ch = case generalCategory ch of
       UppercaseLetter      -> True
       LowercaseLetter      -> True
       TitlecaseLetter      -> True

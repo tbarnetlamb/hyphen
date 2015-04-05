@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-    
+
 module Test where
 
 import Data.Maybe

@@ -30,7 +30,7 @@ import PythonBase
 
 data PolyObjCore = PolyObjCore {resolvePolyObjCoreToType :: HsType -> PythonM Obj}
 
-data Obj = 
+data Obj =
   MonoObj HsType Any
   | PolyObj {
     polyObjFinalType     :: HsType,
@@ -60,7 +60,7 @@ transformObjTypes d = tryMakeMonomorphic . transformObjTypes' d
 
 resolveToType :: HsType -> Obj -> PythonM Obj
 resolveToType ty obj = do
-  let unify_result = unify [mapVars (T.append $ T.pack "o_") $ objType obj, 
+  let unify_result = unify [mapVars (T.append $ T.pack "o_") $ objType obj,
                             mapVars (T.append $ T.pack "r_") ty]
   (_, substRaw) <- maybe (
     pyTypeErr' $ "Incompatible types: cannot resolve object of type\n\t"
@@ -69,7 +69,7 @@ resolveToType ty obj = do
   let subst = Map.mapKeys (Var . T.drop 2 . getVar) . fst
               . Map.split (Var $ T.pack "q") $ substRaw
   transformObjTypes subst obj
-      
+
 ellipsisVar :: Var
 ellipsisVar = Var $ T.pack $ "..."
 
@@ -87,10 +87,10 @@ simplifyFVs =  Map.fromList . concatMap finalize . Map.toList
         rationalizeFrom _        []      []       = []
         rationalizeFrom nextFree (ov:vs) []
           = (nextFree, ov) : rationalizeFrom (nextFree+1) vs []
-        rationalizeFrom nextFree []            ((i, v):ivs) 
+        rationalizeFrom nextFree []            ((i, v):ivs)
           | i >= nextFree    = (i, v)         : rationalizeFrom (i+1)        []  ivs
           | otherwise        =                  rationalizeFrom nextFree     [v] ivs
-        rationalizeFrom nextFree allvs@(ov:vs) allivs@((i, v):ivs) 
+        rationalizeFrom nextFree allvs@(ov:vs) allivs@((i, v):ivs)
           | i > nextFree     = (nextFree, ov) : rationalizeFrom (nextFree+1) vs     allivs
           | otherwise        = (i, v)         : rationalizeFrom (nextFree+1) allvs  ivs
         finalize    :: (Text, [(Int, Var)]) -> [(Text, Text)]
@@ -107,7 +107,7 @@ separateVarNumber v | v == ellipsisVar = (T.pack "a", 0) --special case
         prePart             = if T.null prePart_ then (T.pack "X*X") else T.init prePart_
 
 separateVarPrefix   :: Var -> (Text, Var)
-separateVarPrefix t  = case T.findIndex (=='_') (getVar t) of 
+separateVarPrefix t  = case T.findIndex (=='_') (getVar t) of
   Nothing  -> (T.empty, t)
   Just pos -> second Var $ T.splitAt (pos+1) (getVar t)
 
@@ -128,7 +128,7 @@ alignTypes (o1, os) = do
   let simplifySubst  = simplifyFVs $ typeFreeVars totalTypeRaw
       totalType      = mapVars (simplifySubst Map.!) totalTypeRaw
       subst          = mapVars (simplifySubst Map.!) <$> substRaw
-      resultType     = fromMaybe (error "alignTypes: internal err") 
+      resultType     = fromMaybe (error "alignTypes: internal err")
                        $ Map.lookup ellipsisVar subst
       substsByPref   = cleaveMap separateVarPrefix subst
       substsFor x    = Map.findWithDefault Map.empty x substsByPref
@@ -139,11 +139,11 @@ alignTypes (o1, os) = do
     ++ T.unpack (typeName t1) ++ "\nto objects of type \n\t["
     ++ intercalate ", " (map (T.unpack . typeName) ts)
     ++ "].\nAfter resolving type variables, this "
-    ++ "amounts to applying an object of type\n\t" 
+    ++ "amounts to applying an object of type\n\t"
     ++ T.unpack (typeName $ objType o1') ++ "\n to objects of type\n\t["
-    ++ intercalate ", " (map (T.unpack . typeName . objType) os') 
+    ++ intercalate ", " (map (T.unpack . typeName . objType) os')
     ++ "].\nThe variables "
-    ++ show (map (getVar . fst) . Map.toAscList $ Map.difference 
+    ++ show (map (getVar . fst) . Map.toAscList $ Map.difference
              (typeFreeVars totalType) (typeFreeVars resultType))
     ++ " are present in the input but not the result and cannot be resolved.\n")
     -- ++ (show . typeName $ totalTypeRaw) ++ "\n"
@@ -155,18 +155,18 @@ alignTypes (o1, os) = do
 applyMono' :: (HsType, Any) -> (HsType, Any) -> (HsType, Any)
 applyMono' (fn_type, ptr_fn) (arg_type, ptr_arg) =
   let (ty_fr, ty_to) = breakFnTypeUnsafe fn_type
-      in if ty_fr /= arg_type 
+      in if ty_fr /= arg_type
          then error ("applyMono: expected arg type\n\t" ++ T.unpack (typeName ty_fr)
                      ++ "\ngot:\n\t" ++ T.unpack (typeName arg_type))
          else (ty_to, (Unsafe.Coerce.unsafeCoerce ptr_fn) ptr_arg)
 
 applyMono :: Obj -> Obj -> Obj
-applyMono (MonoObj ty1 obj1) (MonoObj ty2 obj2) 
+applyMono (MonoObj ty1 obj1) (MonoObj ty2 obj2)
   = uncurry MonoObj $ applyMono' (ty1, obj1) (ty2, obj2)
 
 
 apply :: Obj -> [Obj] -> PythonM Obj
-apply fn_orig args_orig = do 
+apply fn_orig args_orig = do
   (fn, args, resultType) <- promoteErr $ alignTypes (fn_orig, args_orig)
   case fn of
     PolyObj {} -> tryMakeMonomorphic $
@@ -200,6 +200,6 @@ doIO (MonoObj ty ptr) = do
   return $ do
     ioRet <- (Unsafe.Coerce.unsafeCoerce ptr :: IO Any)
     return $ MonoObj ioRetType ioRet
-doIO obj@(PolyObj {}) = 
+doIO obj@(PolyObj {}) =
   report $ "IO action to perform must have monomorphic type, not " ++ (
     T.unpack . typeName $ objType obj)

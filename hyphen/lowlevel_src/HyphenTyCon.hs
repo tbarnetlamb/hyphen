@@ -49,7 +49,7 @@ instance Eq (TyCon) where
 
 instance Hashable (TyCon) where
   hash = tyConHash
-  
+
 instance Ord (TyCon) where
   compare (TyCon h p m n _ k i) (TyCon h' p' m' n' _ k' i')
    = compare (h, p, m, n, k, i) (h', p', m', n', k', i')
@@ -72,14 +72,14 @@ tyConRepr     tc@(TyCon {tyConLocation=InExplicitModuleNamed mname})
 tyConRepr     tc@(TyCon {tyConLocation=ivloc@(ImplicitlyVia {})})
   = let transformLocPath :: [Int] -> [Text]
         transformLocPath []      = [T.pack ".head"]
-        transformLocPath (i0:is) 
+        transformLocPath (i0:is)
           = T.pack (".tail[" ++ show (-i0-1) ++ "]") : transformLocPath is
     in case implicitTycLocIsViaType ivloc of
       False -> T.concat (
         T.pack "hs." : implicitTycLocFullName ivloc :
         transformLocPath (implicitTycLocPath ivloc))
       True  -> T.concat (
-        T.pack "hs." : implicitTycLocFullName ivloc : T.pack ".hstype" : 
+        T.pack "hs." : implicitTycLocFullName ivloc : T.pack ".hstype" :
         transformLocPath (implicitTycLocPath ivloc))
 
 tyConArity :: TyCon -> Int
@@ -99,7 +99,7 @@ tyConFromTypeableTyCon knd ghcTyc
     in mkTyCon p m n (InExplicitModuleNamed m) knd False
 
 fnTyCon :: TyCon
-fnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "(->)") 
+fnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "(->)")
           (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
 
 ioTyCon   :: TyCon
@@ -118,10 +118,10 @@ isTupTyCon tyc = case T.group (tyConName tyc) of
   _                  -> False
 
 tupleTyCon :: Int -> TyCon
-tupleTyCon i 
-  = mkTyCon (T.pack $ Data.Typeable.tyConPackage ghcTyc) 
+tupleTyCon i
+  = mkTyCon (T.pack $ Data.Typeable.tyConPackage ghcTyc)
     (T.pack $ Data.Typeable.tyConModule ghcTyc) (T.pack $ '(' : replicate i' ',' ++ ")")
-    (InExplicitModuleNamed . T.pack $ Data.Typeable.tyConModule ghcTyc) 
+    (InExplicitModuleNamed . T.pack $ Data.Typeable.tyConModule ghcTyc)
     (simplKnd i) False
   where ghcTyc = typeRepTyCon $ typeOf ("","")
         i'     = case i of
@@ -141,4 +141,3 @@ pickBestTyc t1 t2 = case compare (tyconQual t1) (tyconQual t2) of
   LT -> t2
   EQ -> t2
   GT -> t1
-

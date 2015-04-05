@@ -54,7 +54,7 @@ explicitVars :: RevHsType -> Set Var
 explicitVars (h :-: t)              = Set.union (Map.keysSet $ typeFreeVars h) (explicitVars t)
 explicitVars (Final (Left _))       = Set.empty
 explicitVars (Final (Right (v, k))) = Set.singleton v
-                                     
+
 declareEquivalent :: Var -> RevHsType -> UnifyM ()
 declareEquivalent v rhst = do
   assocs <- get
@@ -74,7 +74,7 @@ unifyMImpl [x] = return x
 unifyMImpl rhts = do
   assocs <- get
   let expandFinalIfPoss :: RevHsType -> RevHsType
-      expandFinalIfPoss orig@(Final (Right (v, _))) 
+      expandFinalIfPoss orig@(Final (Right (v, _)))
         = maybe orig pvsEquivTo (Map.lookup v assocs)
       expandFinalIfPoss orig = orig
       rhts'   = map expandFinalIfPoss rhts
@@ -83,8 +83,8 @@ unifyMImpl rhts = do
       ctrs    = [ctr | Left ctr     <- finals]
       vars    = [v   | Right v      <- finals]
   case nonFin of
-    [] -> 
-      if null ctrs then 
+    [] ->
+      if null ctrs then
         do let ((v1, k1):vRest) = vars
                rhst = Final (Right (v1, k1))
            sequence_ [declareEquivalent v rhst | (v, _) <- vRest, v1 /= v]
@@ -94,17 +94,17 @@ unifyMImpl rhts = do
            let rhst = Final (Left ctr)
            sequence_ [declareEquivalent v rhst | (v, _) <- vars]
            return rhst
-    nfs@(nf:_) ->  
+    nfs@(nf:_) ->
       do lift . guard $ null ctrs
          sequence_ [declareEquivalent v nf        | (v, _) <- vars]
          let (heads, tails) = ([reversifyHsType a | a:-:_ <- nfs], [b | _:-:b <- nfs])
          head' <- unifyMImpl heads
          tail' <- unifyMImpl tails
          return $ unreversifyHsType head' :-: tail'
- 
+
 transformTypeRec :: Map Var HsType -> HsType -> HsType
 transformTypeRec dict = go
-  where go HsType {typeHead=Left con, typeTail=tail} 
+  where go HsType {typeHead=Left con, typeTail=tail}
           = mkHsType (Left con) (map go tail)
         go HsType {typeHead=Right (var, kind), typeTail=tail} = case Map.lookup var dict of
           Nothing                  -> mkHsType (Right (var, kind)) (map go tail)
@@ -112,10 +112,9 @@ transformTypeRec dict = go
                                    -> go $ mkHsType head' (tail' ++ tail)
 
 unify  :: [HsType] -> Maybe (HsType, Map Var HsType)
-unify hst = 
+unify hst =
   do (res_r, subs_r) <- flip runStateT Map.empty . unifyMImpl . map reversifyHsType $ hst
      let res   = unreversifyHsType res_r
          subs  = fmap (unreversifyHsType . pvsEquivTo) subs_r
          trans = transformTypeRec subs :: HsType -> HsType
      return (trans res, fmap trans subs)
-

@@ -36,7 +36,7 @@ def process_type_ns_item(name, item):
         return inner
     else:
         return hyphen.marshall_ctor.marshall_tycon(item, none_acceptable=False)
-    
+
 def marshall_module(data_namespace, type_namespace, module_to_write):
     data_namespace = dict(
         (k, process_data_ns_item(k, v))  for (k, v) in data_namespace.items())

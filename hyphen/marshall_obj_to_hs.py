@@ -91,7 +91,7 @@ def sequence_hstype_hint(obj, known_so_far, fv_src, allow_tuples=True):
 def tuple_hstype_hint(obj, known_so_far, fv_src, allow_lists=True):
     if allow_lists and known_so_far.head == hs_List:
         return sequence_hstype_hint(obj, known_so_far, fv_src, False)
-    
+
     if len(obj) == 1:
         return known_so_far # no length-1 tuples in Haskell
 
@@ -264,5 +264,3 @@ def py_to_hs(py_obj, hstype):
     if hstype.head in hs_to_py_per_tycon_hooks:
         return hs_to_py_per_tycon_hooks[hstype.head](py_obj, hstype)
     return None
-
-

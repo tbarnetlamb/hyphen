@@ -22,5 +22,3 @@ _USED = (hslowlevel, caches, utils, wrapping_pyfns, hsobj, marshall_obj_to_py,
 
 importing.install_hook()
 import hs.Prelude, hs.Data.Text, hs.GHC.Types, hs.GHC.Prim, hs.Data.ByteString
-
-

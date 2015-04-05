@@ -50,4 +50,3 @@ def hs_to_py(obj):
         return hslowlevel.HsObjRaw.__new__(HsObj, obj)
     else:
         return tyc_class.interpret(obj)
-

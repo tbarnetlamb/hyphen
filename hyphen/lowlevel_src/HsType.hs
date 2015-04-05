@@ -67,7 +67,7 @@ mapVars fn = process
   where process hst = let rest = (map process $ typeTail hst) in case typeHead hst of
           Right (Var v, k)  -> mkHsType (Right (Var (fn v), k)) rest
           tycon             -> mkHsType tycon                   rest
-          
+
 
 mkHsType :: Either TyCon (Var, Kind) -> [HsType] -> HsType
 mkHsType head = either (error . T.unpack . getErrMsg) id . mkHsTypeSafe head
@@ -76,7 +76,7 @@ mkHsTypeSafe :: Either TyCon (Var, Kind) -> [HsType] -> Either ErrMsg HsType
 mkHsTypeSafe head tail = let
   thash = case head of (Left  c) -> hash (c, tail)
                        (Right v) ->  hash (("tyvar", v), tail)
-      
+
   fvMaps = headVars head : zipWith tailVars [1..] tail
   headVars (Right (v,k)) = Map.fromList [(v, Right (k,"in the head of the new type"))]
   headVars _              = Map.empty
@@ -85,11 +85,11 @@ mkHsTypeSafe head tail = let
   fvMap  = foldl (Map.unionWithKey combine) Map.empty fvMaps
   combine _ a@(Left _) _  = a
   combine _ _ a@(Left _)   = a
-  combine v a@(Right (k1, r1)) (Right (k2, r2)) 
+  combine v a@(Right (k1, r1)) (Right (k2, r2))
     | k1 == k2   = a
     | otherwise  = Left (
-      "Error in attempting to construct type " ++ T.unpack name ++ "; type variable " ++ 
-      T.unpack (getVar v) ++ " has kind " ++ kindString k1 ++ 
+      "Error in attempting to construct type " ++ T.unpack name ++ "; type variable " ++
+      T.unpack (getVar v) ++ " has kind " ++ kindString k1 ++
       " " ++ r1 ++ ", but has kind " ++ kindString k2 ++ " " ++ r2 ++ ".")
 
   (errMsgIntro, headKind) = case head of
@@ -99,28 +99,28 @@ mkHsTypeSafe head tail = let
   resultKind = Kind . drop (length tail) . kindArgKinds $ headKind
 
   kindArityCheck :: Either ErrMsg ()
-  kindArityCheck = let 
+  kindArityCheck = let
     arity = (length (kindArgKinds headKind)) :: Int
     in when (arity < length tail) $ report (
       errMsgIntro ++ " applied to too many type variables. It has kind " ++
-      kindString headKind ++ ", so should be applied to at most " ++ show arity ++ 
-      "arguments; instead, it is applied to the " ++ show (length tail :: Int) ++ 
+      kindString headKind ++ ", so should be applied to at most " ++ show arity ++
+      "arguments; instead, it is applied to the " ++ show (length tail :: Int) ++
       " arguments " ++ (unwords $ map (T.unpack . typeName) tail) ++ ".")
 
   argKindCheck :: Int -> Kind -> Kind -> Either ErrMsg ()
-  argKindCheck i kExpected kActual 
+  argKindCheck i kExpected kActual
     = unless (kExpected == kActual) $ report (
       errMsgIntro ++ " has kind " ++ kindString headKind ++ ", so its parameter number "
       ++ show i ++ " should have kind " ++ kindString kExpected ++ " but the actual "
-      ++ "parameter " ++ T.unpack (typeName (tail !! (i - 1))) ++ " has kind " 
+      ++ "parameter " ++ T.unpack (typeName (tail !! (i - 1))) ++ " has kind "
       ++ kindString kActual)
-  
-  name  | either isTupTyCon (const False) head  = bracket ( 
+
+  name  | either isTupTyCon (const False) head  = bracket (
                T.intercalate (T.pack ", ") (map typeName tail))
         | either isListTyCon (const False) head = T.concat [
                T.pack "[", T.intercalate (T.pack ", ") (map typeName tail), T.pack "]"]
         | head == Left fnTyCon = T.concat $ case tail of
-                  [frty, toty] -> 
+                  [frty, toty] ->
                     if typeHead frty == Left fnTyCon
                     then [bracketedTypeName frty, T.pack " -> ", typeName toty]
                     else [typeName frty,          T.pack " -> ", typeName toty]
@@ -132,14 +132,14 @@ mkHsTypeSafe head tail = let
         sequence $ zipWith3 argKindCheck [1..] (kindArgKinds headKind) (map typeKind tail)
         fvs <- Data.Traversable.mapM (either report (return . fst)) fvMap
         return $ HsType thash (force head) tail resultKind fvs name
-  
+
 isMonoType :: HsType -> Bool
 isMonoType = Map.null . typeFreeVars
 
 fnHsType a b        = mkHsType (Left fnTyCon           ) [a, b]
 
 breakFnType :: HsType -> Either ErrMsg (HsType, HsType)
-breakFnType (HsType {typeHead=Left tc, typeTail=[fr, to]}) 
+breakFnType (HsType {typeHead=Left tc, typeTail=[fr, to]})
   | tc == fnTyCon = return (fr, to)
 breakFnType ty = report $ "Trying to apply object of type '" ++ T.unpack (typeName ty)
                  ++ "', but this is not a function type."
@@ -151,14 +151,14 @@ breakFnTypeRec hst = go hst []
           Right (fr, to)  -> go to (fr:sofar)
 
 breakFnTypeUnsafe :: HsType -> (HsType, HsType)
-breakFnTypeUnsafe (HsType {typeHead=Left tc, typeTail=[fr, to]}) 
+breakFnTypeUnsafe (HsType {typeHead=Left tc, typeTail=[fr, to]})
   | tc == fnTyCon = (fr, to)
 breakFnTypeUnsafe ty = error $ "breakFnTypeUnsafe:'" ++ T.unpack (typeName ty)
                        ++ "' is not a function type."
 
 transformType :: Map Var HsType -> HsType -> HsType
 transformType dict = go
-  where go HsType {typeHead=Left con, typeTail=tail} 
+  where go HsType {typeHead=Left con, typeTail=tail}
           = mkHsType (Left con) (map go tail)
         go HsType {typeHead=Right (var, kind), typeTail=tail} = case Map.lookup var dict of
           Nothing                  -> mkHsType (Right (var, kind)) (map go tail)
@@ -169,12 +169,12 @@ transformTypeAllowedCheck :: Map Var HsType -> HsType -> Either ErrMsg ()
 transformTypeAllowedCheck substs original = do
   let usableKinds = typeFreeVars original
       unusable    = map fst . Map.toList $ substs `Map.difference` usableKinds
-  mapM_ (\ (Var v) -> report $ "A substitution is given for the variable  " ++ T.unpack v 
+  mapM_ (\ (Var v) -> report $ "A substitution is given for the variable  " ++ T.unpack v
                       ++ "but that variable isn't used in the type into which we're "
                       ++ "making the substitution") unusable
   let checkKindCompatibility :: Var -> Kind -> HsType -> Either ErrMsg ()
-      checkKindCompatibility (Var v) k t = 
-        unless (k == typeKind t) ( 
+      checkKindCompatibility (Var v) k t =
+        unless (k == typeKind t) (
           report $ "The substitution offered for the variable " ++ T.unpack v ++
           "ought to have kind " ++ kindString k ++ " but you provided something " ++
           "of kind " ++ kindString (typeKind t) ++ ", viz " ++ T.unpack (typeName t))
@@ -182,9 +182,9 @@ transformTypeAllowedCheck substs original = do
     Map.intersectionWithKey checkKindCompatibility usableKinds substs
 
 peelArgTypes :: HsType -> Int -> ([HsType], HsType)
-peelArgTypes ty max_peel 
+peelArgTypes ty max_peel
   | max_peel == 0   = ([], ty)
-  | otherwise       = if typeHead ty /= Left fnTyCon then ([], ty) else 
+  | otherwise       = if typeHead ty /= Left fnTyCon then ([], ty) else
                         let [arg1, rest] = typeTail ty
                             (args', ret) = peelArgTypes rest (max_peel-1)
                         in  (arg1:args', ret)
@@ -197,19 +197,19 @@ hsTypeFromSimpleTypeRep tr = let
   in mkHsType (Left con') args'
 
 hsTypeRepr :: HsType -> Text
-hsTypeRepr hst 
+hsTypeRepr hst
   = let tailRep = map hsTypeRepr $ typeTail hst
     in case typeHead hst of
       Right (var, _) -> T.concat $ [
         T.pack "hyphen.HsType(", T.intercalate (T.pack ", ") (
-           [T.concat[T.pack "\"", getVar var, T.pack "\""]] ++ tailRep ++ 
-           if typeKind hst /= Kind [] then 
+           [T.concat[T.pack "\"", getVar var, T.pack "\""]] ++ tailRep ++
+           if typeKind hst /= Kind [] then
              [T.concat [T.pack "kind=\"", T.pack . kindString $ typeKind hst, T.pack "\""]]
            else []), T.pack ")"]
       Left   tyc     -> T.concat $ [
         tyConRepr tyc, T.pack "(", T.intercalate (T.pack ", ") tailRep, T.pack ")"]
-                           
-                        
+
+
 type TypeForcerM = RWS () [(Text, Text)] (Int, Int)
 
 makeXVar :: TypeForcerM Text
@@ -227,7 +227,7 @@ emitConstraint pair = tell [pair]
 
 makeTypeHeadForcer :: HsType -> TypeForcerM Text
 makeTypeHeadForcer hst = case typeHead hst of
-  Right (Var v, k) 
+  Right (Var v, k)
     -> error "makeTypeForcer: expected monomorphic type"
   Left tyc@(TyCon {tyConName      = oname,
                    tyConLocation = (InExplicitModuleNamed mname)})
@@ -254,7 +254,7 @@ makeTypeForcerM hst =
 processPath :: Text -> [Int] -> TypeForcerM Text
 processPath v [i] = do
   tail <- sequence $ genericReplicate i makeAVar
-  return . bracket . T.unwords $ v : tail  
+  return . bracket . T.unwords $ v : tail
 processPath v (i:is@(_:_)) = do
   hVar <- makeAVar
   mid  <- processPath v is

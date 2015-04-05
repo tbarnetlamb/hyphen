@@ -47,4 +47,3 @@ wrapPythonHsObjRaw = c_wrapPythonHsObjRaw . castStablePtrToPtr <=< newStablePtr
 foreign import ccall c_unwrapPythonHsObjRaw :: PyObj -> WStPtr
 unwrapPythonHsObjRaw :: PyObj -> IO Obj
 unwrapPythonHsObjRaw = deRefStablePtr . castPtrToStablePtr . c_unwrapPythonHsObjRaw
-

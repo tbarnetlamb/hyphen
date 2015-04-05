@@ -194,7 +194,7 @@ tycon_specials = {
 tycon_specials.update(dict([(tup_tyc, {
     "__getitem__" : tuple_getitem,
     "__len__"     : const_fn(tup_len),
-    "BASES"       : (collections.Sequence,),    
+    "BASES"       : (collections.Sequence,),
     }) for tup_len, tup_tyc in enumerate(hs_tupletycs_bylength)]))
 
 dacon_specials = {}

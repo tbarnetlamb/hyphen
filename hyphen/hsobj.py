@@ -36,7 +36,7 @@ class HsObj(hslowlevel.HsObjRaw):
         except Exception:
             return False
         return hslowlevel.from_haskell_Bool(hslowlevel.apply(hs_eq_, self, other))
-    
+
     def __lt__(self, other):
         if type(self) != type(other) or self.hstype != other.hstype:
             return (type(self), self.hstype) < (type(other), other.hstype)
@@ -64,6 +64,5 @@ class HsObj(hslowlevel.HsObjRaw):
 
     def subst(self, *args, **kwa):
         return hyphen.marshall_obj_to_py.hs_to_py(super(HsObj, self).subst(*args, **kwa))
-    
-    hs_dacon = 'BLANK_IN_HSOBJ'
 
+    hs_dacon = 'BLANK_IN_HSOBJ'
