@@ -58,6 +58,9 @@ TypeError: must be int, not float
 >>> hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)
 <hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Nothing'>
 
+Checking that (e.g.) Haskell lists give rise to iterable Python objects
+==========
+
 >>> list(hs.Prelude.id([1, 2, 3]))
 [1, 2, 3]
 
