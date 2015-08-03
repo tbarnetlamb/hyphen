@@ -18,8 +18,6 @@ from hyphen.utils  import (
 
 marshall_cache = {}
 
-# need to process lists as a special case
-
 seen_visible_modules = {}
 
 def get_seen_visible_module(tyc):

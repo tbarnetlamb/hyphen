@@ -3,6 +3,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
+{-|
+Module      : PythonBase
+Description : Low-level Haskell bindings to the Python C API
+-}
+
 module PythonBase where
 
 import Control.Monad
@@ -14,8 +19,6 @@ import Foreign.C.String (CString, withCString)
 import qualified Data.Text            as T
 
 import HyphenBase
-
-type PythonM = MaybeT IO
 
 --------
 
@@ -68,21 +71,19 @@ foreign import ccall exEOFError           :: IO PyObj
 foreign import ccall py_NotImplemented    :: IO PyObj
 foreign import ccall py_None              :: IO PyObj
 
+-- | Set a python TypeError Exception with the provided Text
+
 pyTypeErr :: Text -> IO PyObj
 pyTypeErr str = withCString (T.unpack str) c_pyTypeErr
+
+-- | Set a python TypeError Exception with the provided Text
 
 pyValueErr :: Text -> IO PyObj
 pyValueErr str = withCString (T.unpack str) c_pyValueErr
 
-pyTypeErr' :: String -> PythonM a
-pyTypeErr' = (>> mzero) . lift . pyTypeErr . T.pack
+-- | 
 
-check  :: Bool    -> String -> PythonM () {- check cond on pain of TypeError -}
-check cond = unless cond . pyTypeErr'
-
-checkM :: IO Bool -> String -> PythonM () {- check cond on pain of TypeError -}
-checkM cond str = do cond' <- lift cond
-                     check cond' str
+type PythonM = MaybeT IO
 
 treatingAsErr :: (Eq a) => a -> IO a -> PythonM a
 treatingAsErr errval action = do ans <- lift action
@@ -98,3 +99,20 @@ releasingOnFail :: PyObj -> PythonM a -> PythonM a
 releasingOnFail to_release act = MaybeT (releaseOnNothing =<< runMaybeT act)
   where releaseOnNothing Nothing = py_DECREF to_release >> return Nothing
         releaseOnNothing other   = return other
+
+-- | Version of pyTypeError which (a) takes a String not a Text and
+-- (b) returns in the PythonM monad. (It will always fail.)
+
+pyTypeErr' :: String -> PythonM a
+pyTypeErr' = (>> mzero) . lift . pyTypeErr . T.pack
+
+-- | Check a condition on pain of TypeError
+
+check  :: Bool    -> String -> PythonM ()
+check cond = unless cond . pyTypeErr'
+
+-- | Check a condition (in the IO monad) on pain of TypeError
+
+checkM :: IO Bool -> String -> PythonM ()
+checkM cond str = do cond' <- lift cond
+                     check cond' str

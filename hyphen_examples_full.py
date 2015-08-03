@@ -96,3 +96,7 @@ False
 if __name__ == "__main__":
     import doctest
     doctest.testmod()
+    import hyphen.utils, hyphen.marshall_obj_to_hs
+         # add other modules here if they have docstrings with tests
+    doctest.testmod(hyphen.utils)
+    doctest.testmod(hyphen.marshall_obj_to_hs)
