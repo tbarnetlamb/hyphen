@@ -32,7 +32,7 @@ instance NFData (Var) where
   rnf (Var v) = rnf v
 
 instance Hashable (Var) where
-  hash (Var v) = hash v
+  hashWithSalt salt (Var v) = hashWithSalt salt v
 
 ----
 
@@ -48,6 +48,9 @@ data HsType
 
 instance Hashable (HsType) where
   hash HsType {typeHash=th} = th
+  hashWithSalt salt (HsType {typeHead=head, typeTail=tail} )
+    = case head of (Left  c) -> hashWithSalt salt (c, tail)
+                   (Right v) -> hashWithSalt salt (("tyvar", v), tail)
 
 bracketedTypeName :: HsType -> Text
 bracketedTypeName hst | never_bracket (typeHead hst)  = typeName hst

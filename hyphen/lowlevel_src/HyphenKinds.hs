@@ -48,7 +48,7 @@ kindFromText txt = case parse (spaces *> kindParser <* eof) "" txt of
                  (("Failed to interpret kind string "++T.unpack txt++")")++) . show) err
 
 instance Hashable (Kind) where
-  hash (Kind ks) = hash ks
+  hashWithSalt salt (Kind ks) = hashWithSalt salt ks
 
 instance NFData (Kind) where
   rnf (Kind ks) = rnf ks

@@ -27,8 +27,8 @@ data TyCLocation
     } deriving (Eq, Ord, Show)
 
 instance Hashable TyCLocation where
-  hash (InExplicitModuleNamed name) = hash ('1', name)
-  hash (ImplicitlyVia m o p)        = hash ('2', m, o, p)
+  hashWithSalt s (InExplicitModuleNamed name) = hashWithSalt s ('1', name)
+  hashWithSalt s (ImplicitlyVia m o p)        = hashWithSalt s ('2', m, o, p)
 
 instance NFData TyCLocation where
   rnf (InExplicitModuleNamed t) = rnf t
@@ -49,6 +49,7 @@ instance Eq (TyCon) where
 
 instance Hashable (TyCon) where
   hash = tyConHash
+  hashWithSalt salt (TyCon _ p m n _ k _ ) = hashWithSalt salt (p, m, n, k)
 
 instance Ord (TyCon) where
   compare (TyCon h p m n _ k i) (TyCon h' p' m' n' _ k' i')
@@ -58,7 +59,7 @@ instance NFData (TyCon) where
   rnf (TyCon h p m l n k ic) = rnf (h, p, m, l, n, k, ic)
 
 mkTyCon :: Text -> Text  -> Text -> TyCLocation -> Kind -> Bool -> TyCon
-mkTyCon p m n l a i = TyCon (hash (p, m, n, a)) p m n l a i
+mkTyCon p m n l k i = TyCon (hash (p, m, n, k)) p m n l k i
 
 tyConFullName :: TyCon -> Text
 tyConFullName tc = T.concat [tyConModule tc, T.pack ".", tyConName tc]
