@@ -5,7 +5,7 @@ import sys, distutils.sysconfig, os.path, subprocess
 def pylib():
     items = {'major'    : sys.hexversion >> 24,
              'minor'    : (sys.hexversion >> 16) & 0xff,
-             'abiflags' : sys.abiflags}
+             'abiflags' : sys.__dict__.get('abiflags', '')}
     if sys.platform == 'darwin':
         return 'python{major}.{minor}'.format(**items)
     elif sys.platform == 'linux':
