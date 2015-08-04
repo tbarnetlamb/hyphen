@@ -1,4 +1,5 @@
 *~
 *.pyc
 hyphen/lowlevel_inter
-hyphen/hslowlevel.so
+hyphen/hslowlevel*.so
+hyphen/lowlevel_src/hyphen_c.o

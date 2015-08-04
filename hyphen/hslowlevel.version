@@ -1,0 +1,4 @@
+HSLOWLEVEL {
+  global: PyInit_hslowlevel;
+  local: *;
+};
