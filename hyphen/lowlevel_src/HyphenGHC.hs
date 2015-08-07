@@ -42,6 +42,9 @@ import qualified Outputable  as GHCOutputable
 import qualified ErrUtils    as GHCErrUtils
 import qualified Exception   as GHCException
 import qualified HscTypes    as GHCHscTypes
+#if __GLASGOW_HASKELL__ >= 708
+import qualified ConLike     as GHCConLike
+#endif
 import qualified GhcMonad
 
 import HyphenBase
@@ -136,7 +139,11 @@ transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe TyCon
 transformGHCTyc loc tyc = do
   let ghcName = GHC.getName tyc
       modl    = GHC.nameModule ghcName
+#if __GLASGOW_HASKELL__ >= 710
+      pckg    = T.pack . GHCModule.packageKeyString $ GHC.modulePackageKey modl
+#else
       pckg    = T.pack . GHCModule.packageIdString $ GHC.modulePackageId modl
+#endif
       mname   = T.pack . GHC.moduleNameString $ GHC.moduleName modl
       oname   = T.pack . GHCOccName.occNameString $ GHC.getOccName ghcName
       loc'    = fromMaybe (InExplicitModuleNamed mname) loc
@@ -282,7 +289,12 @@ transformGHCDataCon import_module dc = fromMaybe [] $ do
 
 transformGHCTyThing :: Text -> GHC.TyThing -> ([(Text, PreObj)], [(Text, TyNSElt)])
 transformGHCTyThing im (GHCType.AnId     id) = (maybeToList $ transformGHCId      im id, [])
+#if __GLASGOW_HASKELL__ >= 708
+transformGHCTyThing im (GHCType.AConLike (GHCConLike.RealDataCon dc))
+                                             = (transformGHCDataCon im dc,               [])
+#else
 transformGHCTyThing im (GHCType.ADataCon dc) = (transformGHCDataCon im dc,               [])
+#endif
 transformGHCTyThing im (GHCType.ATyCon   tc) = ([], maybeToList (transformGHCTyNSElt im tc))
 transformGHCTyThing _  _                     = ([],                                      [])
 
@@ -301,8 +313,13 @@ readGHCModule :: Text -> GhcMonad.Ghc [GHC.TyThing]
 readGHCModule name = do
   mod        <- GHC.findModule (GHC.mkModuleName $ T.unpack name) Nothing
   mi         <- GHC.getModuleInfo mod
+#if __GLASGOW_HASKELL__ >= 708
+  infos      <- mapM (GHC.getInfo False) $ maybe [] GHC.modInfoExports mi
+  return [a |  Just (a, _, _, _) <- infos]
+#else
   infos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
   return [a |  Just (a, _, _) <- infos]
+#endif
 
 readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (HashMap TyCon TyCon, Maybe Text)
 readGHCModuleTycCanon mname = GHCException.ghandle handler $ do

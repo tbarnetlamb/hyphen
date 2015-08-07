@@ -52,11 +52,14 @@ TypeError: must be int, not float
 >>> hs.Prelude.id({1, 2})
 <hs.Data.Set.Base.Set object of Haskell type Data.Set.Base.Set GHC.Integer.Integer, containing 'fromList [1,2]'>
 
->>> hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)
-<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC.Integer.Integer, containing 'Just 1'>
+(Next 2 tests written in a funny way because Data.Maybe.Maybe moved to GHC.Base,
+and we want a test that passes both before and after the move)
 
->>> hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)
-<hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Nothing'>
+>>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)).replace('GHC.Base', 'Data.Maybe')
+"<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC.Integer.Integer, containing 'Just 1'>"
+
+>>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)).replace('GHC.Base', 'Data.Maybe')
+"<hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Nothing'>"
 
 Checking that (e.g.) Haskell lists give rise to iterable Python objects
 ==========
