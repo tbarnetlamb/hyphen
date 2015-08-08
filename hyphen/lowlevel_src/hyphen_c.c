@@ -12,6 +12,8 @@ extern void __stginit_Hyphen ( void );
 /* --------------------------------------------------------------------- */
 
 static PyObject *HsException;
+static HsPtr ghc_interpreter_state = 0;
+static HsBool ghc_srcmodules_loaded = 0;
 
 HsPtr
 pythonateInt(HsInt i)
@@ -339,7 +341,8 @@ typedef struct {
 static void
 TyCon_dealloc(TyCon* self)
 {
-  hs_free_stable_ptr(self->stablePtr);
+  if (ghc_interpreter_state) /* Don't free after module shutdown */
+    hs_free_stable_ptr(self->stablePtr);
   Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -485,7 +488,8 @@ typedef struct {
 static void
 HsType_dealloc(HsType* self)
 {
-  hs_free_stable_ptr(self->stablePtr);
+  if (ghc_interpreter_state) /* Don't free after module shutdown */
+    hs_free_stable_ptr(self->stablePtr);
   Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -633,7 +637,8 @@ typedef struct {
 static void
 HsObjRaw_dealloc(HsObjRaw* self)
 {
-  hs_free_stable_ptr(self->objStablePtr);
+  if (ghc_interpreter_state) /* Don't free after module shutdown */
+    hs_free_stable_ptr(self->objStablePtr);
   Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -923,9 +928,6 @@ to_haskell_Double(PyObject *self, PyObject *args)
 
   return buildHaskellDouble(b);
 }
-
-static HsPtr ghc_interpreter_state = 0;
-static HsBool ghc_srcmodules_loaded = 0;
 
 static PyObject *
 hyphen_import_lib(PyObject *self, PyObject *args)
