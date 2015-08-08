@@ -1037,7 +1037,7 @@ static void pyhs_free(void *to_free)
 {
   if (ghc_interpreter_state)
     {
-      /*close_GHC_state(ghc_interpreter_state)*/
+      close_GHC_state(ghc_interpreter_state);
       hs_free_stable_ptr(ghc_interpreter_state);
     }
   ghc_interpreter_state = 0;
