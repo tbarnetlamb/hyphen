@@ -32,6 +32,8 @@ def get_seen_visible_module(tyc):
 def process_constructors_from_module(module_name):
     data_ns, tycon_ns = fetch_lib_module(module_name)
     tycons_defined_here = {}
+    if module_name == 'GHC.Types':
+        tycon_ns['[]'] = hs_List
     for tycon_name, tycon in tycon_ns.items():
         if not isinstance(tycon, hyphen.hslowlevel.TyCon) or (
                 get_seen_visible_module(tycon) != module_name):
