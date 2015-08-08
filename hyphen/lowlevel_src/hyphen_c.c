@@ -1,3 +1,4 @@
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <stdio.h>
 #include <HsFFI.h>
@@ -6,7 +7,6 @@
 
 extern void __stginit_Hyphen ( void );
 
-#include <Python.h>
 #include "structmember.h"
 
 /* --------------------------------------------------------------------- */
@@ -16,7 +16,13 @@ static PyObject *HsException;
 HsPtr
 pythonateInt(HsInt i)
 {
+  /* HsInt is 32 or 64 bit to match sizeof(void*), without regard to the
+     definition of c 'long'*/
+#if defined(SIZEOF_LONG_LONG) && SIZEOF_LONG != SIZEOF_VOID_P && SIZEOF_LONG_LONG == SIZEOF_VOID_P
+  return PyLong_FromLongLong(i);
+#else
   return PyLong_FromLong(i);
+#endif
 }
 
 HsPtr
@@ -337,7 +343,7 @@ TyCon_dealloc(TyCon* self)
   Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static long
+static Py_hash_t
 TyCon_hash(PyObject *self)
 {
   long foo = tycon_hash(self);
@@ -483,7 +489,7 @@ HsType_dealloc(HsType* self)
   Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static long
+static Py_hash_t
 HsType_hash(PyObject *self)
 {
   long foo = hstype_hash(self);
@@ -788,8 +794,8 @@ to_haskell_Char(PyObject *self, PyObject *args)
 static PyObject *
 to_haskell_String(PyObject *self, PyObject *args)
 {
-  char *buffer=0;
-  int   buffer_length=-1;
+  char        *buffer=0;
+  Py_ssize_t   buffer_length=-1;
   if (!PyArg_ParseTuple(args, "es#:to_haskell_String", "utf-16", &buffer, &buffer_length))
     {
       return NULL;
@@ -805,8 +811,8 @@ to_haskell_String(PyObject *self, PyObject *args)
 static PyObject *
 to_haskell_Text(PyObject *self, PyObject *args)
 {
-  char *buffer=0;
-  int  buffer_length=-1;
+  char       *buffer=0;
+  Py_ssize_t  buffer_length=-1;
   if (!PyArg_ParseTuple(args, "es#:to_haskell_Text", "utf-16", &buffer, &buffer_length))
     {
       return NULL;
@@ -834,8 +840,8 @@ c_makeHaskellText(HsPtr str)
 static PyObject *
 to_haskell_ByteString(PyObject *self, PyObject *args)
 {
-  char *buffer=0;
-  int  buffer_length=-1;
+  char       *buffer=0;
+  Py_ssize_t  buffer_length=-1;
   if (!PyArg_ParseTuple(args, "y#:to_haskell_ByteString", &buffer, &buffer_length))
     {
       return NULL;
@@ -847,9 +853,15 @@ to_haskell_ByteString(PyObject *self, PyObject *args)
 static PyObject *
 to_haskell_Int(PyObject *self, PyObject *args)
 {
-  int i;
-  if (!PyArg_ParseTuple(args, "i:to_haskell_Int", &i))
+#if defined(SIZEOF_LONG_LONG) && SIZEOF_LONG != SIZEOF_VOID_P && SIZEOF_LONG_LONG == SIZEOF_VOID_P
+  long i;
+  if (!PyArg_ParseTuple(args, "l:to_haskell_Int", &i))
     return NULL;
+#else
+  long long i;
+  if (!PyArg_ParseTuple(args, "L:to_haskell_Int", &i))
+    return NULL;
+#endif
 
   return buildHaskellInt(i);
 }
@@ -962,20 +974,24 @@ compound_sigint_handler(int signum)
 HsInt
 c_installHaskellCtrlCHandler()
 {
+#if !defined(mingw32_HOST_OS)
   if (PyOS_getsig(SIGINT) == python_siginthandler     && haskell_siginthandler)
     {
       PyOS_setsig(SIGINT, &compound_sigint_handler);
     }
+#endif
   return signal_count;
 }
 
 HsInt
 c_reinstallPythonCtrlCHandler()
 {
+#if !defined(mingw32_HOST_OS)
   if (PyOS_getsig(SIGINT) == &compound_sigint_handler && python_siginthandler)
     {
       PyOS_setsig(SIGINT, python_siginthandler);
     }
+#endif
   return signal_count;
 }
 
@@ -1023,9 +1039,13 @@ static void pyhs_free(void *to_free)
       hs_free_stable_ptr(ghc_interpreter_state);
     }
   ghc_interpreter_state = 0;
+#if !defined(mingw32_HOST_OS)
   PyOS_sighandler_t sigint_handler = PyOS_getsig(SIGINT);
+#endif
   hs_exit();
+#if !defined(mingw32_HOST_OS)
   PyOS_setsig(SIGINT, sigint_handler);
+#endif
   PyObject_Del(to_free);
 }
 
@@ -1104,14 +1124,18 @@ PyInit_hslowlevel(void)
       return NULL;
     }
 
+#if !defined(mingw32_HOST_OS)
   /* The Haskell RTS installs a SIGINT signal handler, which we don't want
      because it interferes with Python's. So store Python's first, and
      restore it after hs_init() */
   python_siginthandler  = PyOS_getsig(SIGINT);
+#endif
   hs_init(0, 0);
+#if !defined(mingw32_HOST_OS)
   setupHaskellCtrlCHandler();
   haskell_siginthandler = PyOS_getsig(SIGINT);
   PyOS_setsig(SIGINT, python_siginthandler);
+#endif
   hs_add_root(__stginit_Hyphen);
 
   ghc_srcmodules_loaded = 0;

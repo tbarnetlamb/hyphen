@@ -2,7 +2,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern void setupHaskellCtrlCHandler(void);
 extern HsInt tycon_hash(HsPtr a1);
 extern HsPtr tycon_richcmp(HsPtr a1, HsPtr a2, HsInt a3);
 extern HsPtr tycon_str(HsPtr a1);

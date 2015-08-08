@@ -2,4 +2,8 @@
 *.pyc
 hyphen/lowlevel_inter
 hyphen/hslowlevel*.so
+hyphen/hslowlevel*.dll
+hyphen/hslowlevel*.dll.a
 hyphen/lowlevel_src/hyphen_c.o
+hyphen/hslowlevel.pyd
+hyphen/hslowlevel.pyd.a

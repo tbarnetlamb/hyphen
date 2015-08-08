@@ -40,7 +40,9 @@ import qualified Data.Traversable
 import qualified Control.Exception as Exception
 import qualified Unsafe.Coerce
 import qualified GHC
+#if !defined(mingw32_HOST_OS)
 import qualified System.Posix.Signals
+#endif
 import qualified System.Mem.Weak
 import qualified GhcMonad
 
@@ -125,6 +127,7 @@ servicingPySignalHandlers act = do
 threadToInterruptStack :: IORef [System.Mem.Weak.Weak ThreadId]
 threadToInterruptStack = unsafePerformIO (newIORef [])
 
+#if !defined(mingw32_HOST_OS)
 catchingCtrlC :: IO a -> IO a
 catchingCtrlC = Exception.bracket before after . const
   where before       = do main_thread_id <- myThreadId
@@ -150,6 +153,7 @@ setupHaskellCtrlCHandler = do
               Just tid -> Exception.throwTo tid (toException UserInterrupt)
   System.Posix.Signals.installHandler System.Posix.Signals.sigINT handler Nothing
   return ()
+#endif
 
 ------------------------------
 
