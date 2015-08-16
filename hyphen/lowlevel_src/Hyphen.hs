@@ -281,10 +281,19 @@ hstype_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ 
   lift . wrapPythonHsType $ transformType substs self
 
 foreign export ccall hstype_gethead         :: PyObj -> Ptr () -> IO PyObj
-hstype_gethead p _ = do hstype <- unwrapPythonHsType p
-                        case typeHead hstype of
-                          Left tyc         -> wrapPythonTyCon tyc
-                          Right (Var v, k) -> pythonateText  v
+hstype_gethead p _ = do
+  hstype <- unwrapPythonHsType p
+  case typeHead hstype of
+    Left tyc         -> liftM (fromMaybe nullPyObj) . runMaybeT $ do
+      pythonateTuple [treatingAsErr nullPyObj . pythonateText . f $ tyc
+                     | f <- [tyConName, tyConModule, tyConPackage]]
+    Right (Var v, k) -> pythonateText  v
+
+foreign export ccall hstype_gethead_ll      :: PyObj -> Ptr () -> IO PyObj
+hstype_gethead_ll p _ = do hstype <- unwrapPythonHsType p
+                           case typeHead hstype of
+                             Left tyc         -> wrapPythonTyCon tyc
+                             Right (Var v, k) -> pythonateText  v
 
 foreign export ccall hsobjraw_gethstype     :: PyObj -> Ptr () -> IO PyObj
 hsobjraw_gethstype = ignoring2nd (wrapPythonHsType . objType <=< unwrapPythonHsObjRaw)

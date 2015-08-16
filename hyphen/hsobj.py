@@ -87,7 +87,7 @@ class HsObj(hslowlevel.HsObjRaw):
         # rather, it already *is* the (necessarily unique) object
         # that comes form that data constructor. In this case we
         # don't call the data constructor, but just return it.
-        if cls.hs_dacon.hstype.head == hs_Func:
+        if cls.hs_dacon.hstype.head_ll == hs_Func:
             return hslowlevel.HsObjRaw.__new__(cls, hyphen.marshall_ctor.applyFromPyArgs(
                 cls.hs_dacon, *args))
         else:

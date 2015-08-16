@@ -538,11 +538,13 @@ static PyMethodDef HsType_methods[] = {
 };
 
 static PyGetSetDef HsType_getsetters[] = {
-  {"name", (getter) hstype_getname, unsettable, "The name of the type.",           NULL},
-  {"head", (getter) hstype_gethead, unsettable, "The head of the type.",           NULL},
-  {"tail", (getter) hstype_gettail, unsettable, "The tail of the type.",           NULL},
-  {"kind", (getter) hstype_getkind, unsettable, "The kind of the type.",           NULL},
-  {"fvs",  (getter) hstype_getfvs,  unsettable, "The free variables in the type.", NULL},
+  {"name",    (getter) hstype_getname,    unsettable, "The name of the type.",           NULL},
+  {"head",    (getter) hstype_gethead,    unsettable, "The head of the type.",           NULL},
+  {"head_ll", (getter) hstype_gethead_ll, unsettable,
+                          "Low level representation of the head of the type.",           NULL},
+  {"tail",    (getter) hstype_gettail,    unsettable, "The tail of the type.",           NULL},
+  {"kind",    (getter) hstype_getkind,    unsettable, "The kind of the type.",           NULL},
+  {"fvs",     (getter) hstype_getfvs,     unsettable, "The free variables in the type.", NULL},
   {NULL}  /* Sentinel */
 };
 

@@ -32,13 +32,13 @@ from hyphen        import hslowlevel
 ## objs is a dictionary containing the 'object' namespace from the
 ## module and types is a dictionary containing the types namespace.
 hsprimitives = fetch_lib_module('prim'        )
-hs_List      = hsprimitives['[]'].hstype.head
+hs_List      = hsprimitives['[]'].hstype.head_ll
 hs_Complex   = fetch_lib_module('Data.Complex'   )[1]['Complex']
 hs_Maybe     = fetch_lib_module('Data.Maybe'     )[1]['Maybe']
 hs_Set       = fetch_lib_module('Data.Set'       )[1]['Set']
 hs_Map       = fetch_lib_module('Data.Map'       )[1]['Map']
 hs_IO        = fetch_lib_module('Prelude'        )[1]['IO']
-hs_Func      = hsprimitives['(:)'].hstype.head
+hs_Func      = hsprimitives['(:)'].hstype.head_ll
 
 hs_mkComplex = fetch_lib_module('Data.Complex'   )[0][':+']
 hs_imag      = fetch_lib_module('Data.Complex'   )[0]['imagPart']
@@ -90,7 +90,7 @@ def return_type_when_saturated(hstype):
     >>> str(return_type_when_saturated(fn_type))
     '<hyphen.HsType object representing GHC.Types.Int>'
     """
-    if not isinstance(hstype.head, str) and hstype.head.name == '(->)':
+    if not isinstance(hstype.head_ll, str) and hstype.head_ll.name == '(->)':
         return return_type_when_saturated(hstype.tail[1])
     return hstype
 
@@ -107,7 +107,7 @@ def first_arg_type(hstype):
     >>> str(first_arg_type(fn_type))
     '<hyphen.HsType object representing GHC.Types.Bool>'
     """
-    assert hstype.head.name == '(->)'
+    assert hstype.head_ll.name == '(->)'
     return hstype.tail[0]
 
 def break_hs_fn_type(hstype, num_args=-1):
@@ -139,7 +139,8 @@ def break_hs_fn_type(hstype, num_args=-1):
     (('<hyphen.HsType object representing GHC.Types.Bool>', '<hyphen.HsType object representing GHC.Types.Int>'), '<hyphen.HsType object representing GHC.Types.Int>')
     """
     arg_types = []
-    while (not isinstance(hstype.head, str)) and hstype.head.name == '(->)' and num_args != 0:
+    while (not isinstance(hstype.head_ll, str)) and (
+            hstype.head_ll.name == '(->)' and num_args != 0):
         this, hstype = hstype.tail
         arg_types.append(this)
         num_args -= 1
@@ -181,7 +182,7 @@ def datacon_tycon(dc):
     """
     if dc is None:
         return None
-    return return_type_when_saturated(dc.hstype).head
+    return return_type_when_saturated(dc.hstype).head_ll
 
 def const_fn(value):
     """Return a constant function which takes a single parameter and
@@ -254,7 +255,7 @@ def break_haskell_tuple(tuple_):
     ['0', '1', '2']
     """
     try:
-        tlen = hs_tupletyc_lengths[tuple_.hstype.head]
+        tlen = hs_tupletyc_lengths[tuple_.hstype.head_ll]
     except KeyError as e:
         raise TypeError('marshall_tuple: tuple input not recognized as being of a tuple '
                         'type. (NB: we only support tuples of length <= 14.)') from e

@@ -24,6 +24,7 @@ extern HsPtr hstype_getkind(HsPtr a1, HsPtr a2);
 extern HsPtr hstype_getfvs(HsPtr a1, HsPtr a2);
 extern HsPtr hstype_subst(HsPtr a1, HsPtr a2, HsPtr a3);
 extern HsPtr hstype_gethead(HsPtr a1, HsPtr a2);
+extern HsPtr hstype_gethead_ll(HsPtr a1, HsPtr a2);
 extern HsPtr hsobjraw_gethstype(HsPtr a1, HsPtr a2);
 extern HsPtr hsobjraw_narrow(HsPtr a1, HsPtr a2);
 extern HsPtr hsobjraw_subst(HsPtr a1, HsPtr a2, HsPtr a3);

@@ -117,7 +117,7 @@ def hs_to_py(obj):
     hstype = obj.hstype
     if hstype in per_type_hooks:
         return per_type_hooks[hstype](obj)
-    tycon  = hstype.head
+    tycon  = hstype.head_ll
     if isinstance(tycon, str): #Polymorphic object with type variable for head of the type
         return hslowlevel.HsObjRaw.__new__(hyphen.HsObj, obj)
     if isinstance(tycon, hslowlevel.TyCon) and tycon in per_tycon_hooks:

@@ -47,12 +47,13 @@ def process_constructors_from_module(module_name):
         if data_name[:1].isupper() or data_name[:1] == ':':
             tycon  = datacon_tycon(data)
             codata = data_ns["*co-" + data_name]
-            assert codata.hstype.head.name == '(->)' and codata.hstype.tail[0].head == tycon
+            assert codata.hstype.head_ll.name == '(->)' and (
+                codata.hstype.tail[0].head_ll == tycon)
             if tycon in tycons_defined_here:
                 tycons_defined_here[tycon][0][data_name] = (data, codata)
-        elif data_name[:1] != '_' and not isinstance(data.hstype.head, str) and (
-                data.hstype.head.name == '(->)'):
-            tycon = first_arg_type(data.hstype).head
+        elif data_name[:1] != '_' and not isinstance(data.hstype.head_ll, str) and (
+                data.hstype.head_ll.name == '(->)'):
+            tycon = first_arg_type(data.hstype).head_ll
             if tycon in tycons_defined_here:
                 tycons_defined_here[tycon][1][data_name] = data
     for tyc, (dacons, meths) in tycons_defined_here.items():

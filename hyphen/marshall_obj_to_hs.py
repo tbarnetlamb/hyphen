@@ -89,7 +89,7 @@ hs_to_py_general_hooks    = []
 ## reader to read the dictionary below before reading these functions!
 
 def to_haskell_Complex(obj, hstype):
-    assert hstype.head == hs_Complex
+    assert hstype.head_ll == hs_Complex
     partsType, = hstype.tail
     re = py_to_hs(obj.real, partsType)
     im = py_to_hs(obj.imag, partsType)
@@ -104,7 +104,7 @@ def to_haskell_Maybe(obj, hstype):
     # results! (In this case, the user is recommended not to marshall
     # directly to Haskell Maybe (Maybe X) objects but to build them up
     # explicitly using Just and Nothing.)
-    assert hstype.head == hs_Maybe
+    assert hstype.head_ll == hs_Maybe
     justType, = hstype.tail
     if obj is None:
         return hs_Nothing
@@ -114,13 +114,13 @@ def to_haskell_Maybe(obj, hstype):
 def to_haskell_IOact(obj, hstype):
     ## Python callables may be converted to IO actions; the callable will be
     ## called with no arguments.
-    assert hstype.head == hs_IO and callable(obj)
+    assert hstype.head_ll == hs_IO and callable(obj)
     wrapped_obj = hyphen.wrapping_pyfns.wrap_pyfn(obj, hstype.tail[0])
     return hslowlevel.wrap_pyfn(wrapped_obj, hstype, 0)
 
 def to_haskell_Function(obj, hstype):
     ## Python callables may be converted to Haskell functions too
-    assert hstype.head == hs_Func and callable(obj)
+    assert hstype.head_ll == hs_Func and callable(obj)
     wrapped_obj = hyphen.wrapping_pyfns.wrap_pyfn(obj, return_type_when_saturated(hstype))
     return hslowlevel.wrap_pyfn(wrapped_obj, hstype, -1)
 
@@ -129,7 +129,7 @@ def to_haskell_List(obj, hstype):
     # objects of type X, then we can convert obj to be a Haskell
     # object of type [X]; this is most commonly used when in fact obj
     # is a python list.
-    assert hstype.head == hs_List
+    assert hstype.head_ll == hs_List
     elemType, = hstype.tail
     parts     = [py_to_hs(elem, elemType) for elem in obj]
     hslist    = hs_emptyList.narrow_type(hstype)
@@ -138,12 +138,12 @@ def to_haskell_List(obj, hstype):
     return hslist
 
 def to_haskell_Set(obj, hstype):
-    assert hstype.head == hs_Set
+    assert hstype.head_ll == hs_Set
     elemType, = hstype.tail
     return hslowlevel.apply(hs_mkSet, to_haskell_List(obj, hs_List(elemType)))
 
 def to_haskell_Map(obj, hstype):
-    assert hstype.head == hs_Map
+    assert hstype.head_ll == hs_Map
     try:
         my_iter = iter(obj.items())
     except:
@@ -152,7 +152,7 @@ def to_haskell_Map(obj, hstype):
         hs_mkMap, to_haskell_List(my_iter, hs_List(make_hs_tuple_type(*hstype.tail))))
 
 def to_haskell_Tuple(obj, hstype):
-    assert hstype.head in hs_tupletycs
+    assert hstype.head_ll in hs_tupletycs
     as_pytup  = tuple(obj)
     if len(as_pytup) == 1:
         raise ValueError("No length 1 tuples in Haskell.")
@@ -166,24 +166,24 @@ def to_haskell_Tuple(obj, hstype):
     return hslowlevel.apply(hsprimitives['(' + ',' * (len(as_pytup) - 1) + ')'], *parts)
 
 hs_to_py_per_tycon_hooks = {
-    hslowlevel.hstype_Bool.head        : skip2(hslowlevel.to_haskell_Bool),
-    hslowlevel.hstype_Text.head        : skip2(hslowlevel.to_haskell_Text),
-    hslowlevel.hstype_String.head      : skip2(hslowlevel.to_haskell_String),
-    hslowlevel.hstype_Char.head        : skip2(hslowlevel.to_haskell_Char),
-    hslowlevel.hstype_ByteString.head  : skip2(hslowlevel.to_haskell_ByteString),
-    hslowlevel.hstype_Integer.head     : skip2(hslowlevel.to_haskell_Integer),
-    hslowlevel.hstype_Int.head         : skip2(hslowlevel.to_haskell_Int),
-    hslowlevel.hstype_Float.head       : skip2(hslowlevel.to_haskell_Float),
-    hslowlevel.hstype_Double.head      : skip2(hslowlevel.to_haskell_Double),
-    hs_Complex                         : to_haskell_Complex,
-    hs_Maybe                           : to_haskell_Maybe,
+    hslowlevel.hstype_Bool.head_ll       : skip2(hslowlevel.to_haskell_Bool),
+    hslowlevel.hstype_Text.head_ll       : skip2(hslowlevel.to_haskell_Text),
+    hslowlevel.hstype_String.head_ll     : skip2(hslowlevel.to_haskell_String),
+    hslowlevel.hstype_Char.head_ll       : skip2(hslowlevel.to_haskell_Char),
+    hslowlevel.hstype_ByteString.head_ll : skip2(hslowlevel.to_haskell_ByteString),
+    hslowlevel.hstype_Integer.head_ll    : skip2(hslowlevel.to_haskell_Integer),
+    hslowlevel.hstype_Int.head_ll        : skip2(hslowlevel.to_haskell_Int),
+    hslowlevel.hstype_Float.head_ll      : skip2(hslowlevel.to_haskell_Float),
+    hslowlevel.hstype_Double.head_ll     : skip2(hslowlevel.to_haskell_Double),
+    hs_Complex                           : to_haskell_Complex,
+    hs_Maybe                             : to_haskell_Maybe,
 
-    hs_IO                              : to_haskell_IOact,
-    hs_Func                            : to_haskell_Function,
+    hs_IO                                : to_haskell_IOact,
+    hs_Func                              : to_haskell_Function,
 
-    hs_List                            : to_haskell_List,
-    hs_Set                             : to_haskell_Set,
-    hs_Map                             : to_haskell_Map,
+    hs_List                              : to_haskell_List,
+    hs_Set                               : to_haskell_Set,
+    hs_Map                               : to_haskell_Map,
 }
 
 hs_to_py_per_tycon_hooks.update(
@@ -208,8 +208,8 @@ def py_to_hs(py_obj, hstype):
         result = hook(py_obj)
         if result is not None:
             return result
-    if hstype.head in hs_to_py_per_tycon_hooks:
-        return hs_to_py_per_tycon_hooks[hstype.head](py_obj, hstype)
+    if hstype.head_ll in hs_to_py_per_tycon_hooks:
+        return hs_to_py_per_tycon_hooks[hstype.head_ll](py_obj, hstype)
     return None
 
 
@@ -221,7 +221,7 @@ def isblank(hstype):
     """Convenience function to tell us whether the type hstype is
     completely uninformative (that is, unifies with anything) (that
     is, of the form 'a' for some type variable a)."""
-    return isinstance(hstype.head, str) and len(hstype.tail) == 0
+    return isinstance(hstype.head_ll, str) and len(hstype.tail) == 0
 
 # The basic structure of this code is that we provide a big dictionary
 # where the user can put hooks to handle particular cases, and the
@@ -263,7 +263,7 @@ def throughmaybes_ifblank(to_return):
     def analyse(_a, known_so_far, _b):
         if isblank(known_so_far):
             return to_return
-        elif known_so_far.head == hs_Maybe and isblank(known_so_far.tail[0]):
+        elif known_so_far.head_ll == hs_Maybe and isblank(known_so_far.tail[0]):
             return hs_Maybe(to_return)
         else:
             return known_so_far
@@ -296,9 +296,9 @@ def breakup_known_so_far(known_so_far, expected_head, fv_src):
     must have been applied in such a refinement. Otherwise, return
     None. fv_src is a source of fresh free variables: see
     pyobj_hstype_hint docstring below. """
-    if known_so_far.head == expected_head:
+    if known_so_far.head_ll == expected_head:
         return known_so_far.tail
-    elif isinstance(known_so_far.head, str):
+    elif isinstance(known_so_far.head_ll, str):
         num_blanks = expected_head.arity - len(known_so_far.tail)
         if num_blanks < 0:
             return None
@@ -316,7 +316,7 @@ def complex_hstype_hint(obj, known_so_far, fv_src):
         return hs_Complex(parttype)
 
 def sequence_hstype_hint(obj, known_so_far, fv_src, allow_tuples=True):
-    if allow_tuples and known_so_far.head in hs_tupletycs:
+    if allow_tuples and known_so_far.head_ll in hs_tupletycs:
         return tuple_hstype_hint(obj, known_so_far, fv_src, False)
     breakup_as_list = breakup_known_so_far(known_so_far, hs_List, fv_src)
     if breakup_as_list is None:
@@ -326,7 +326,7 @@ def sequence_hstype_hint(obj, known_so_far, fv_src, allow_tuples=True):
     return hs_List(next(fv_src))
 
 def tuple_hstype_hint(obj, known_so_far, fv_src, allow_lists=True):
-    if allow_lists and known_so_far.head == hs_List:
+    if allow_lists and known_so_far.head_ll == hs_List:
         return sequence_hstype_hint(obj, known_so_far, fv_src, False)
 
     if len(obj) == 1:
