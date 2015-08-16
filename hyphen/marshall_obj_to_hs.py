@@ -449,9 +449,9 @@ def pyobj_hstype_hint(py_obj, known_so_far=None, fv_src=None):
 
     For example:
     >>> str(pyobj_hstype_hint((1, 2), None))
-    '<hyphen.HsType object representing (GHC.Integer.Integer, GHC.Integer.Integer)>'
+    '<hyphen.HsType object representing (GHC.Integer.Type.Integer, GHC.Integer.Type.Integer)>'
     >>> str(pyobj_hstype_hint((1, 2), hs_List(hslowlevel.HsType('a'))))
-    '<hyphen.HsType object representing [GHC.Integer.Integer]>'
+    '<hyphen.HsType object representing [GHC.Integer.Type.Integer]>'
 
     ]
 

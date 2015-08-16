@@ -427,41 +427,19 @@ importLibModules sess names = do
 
 importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
   HashMap Text (HashMap Text Obj, HashMap Text TyNSElt))
-importSrcModules names = tbd{-do
-  logref <- liftIO $ newIORef ""
-  dflags <- getSessionDynFlags
-  setSessionDynFlags $ dflags { hscTarget = HscInterpreted
-                              , ghcLink   = LinkInMemory
-                              , log_action = logHandler logref
-                              }
-  defaultCleanupHandler dflags $ do
-    setTargets =<< sequence [guessTarget "test.hs" Nothing]
-    load LoadAllTargets
-    -- Bringing the module into the context
-    setContext [IIModule $ mkModuleName "Test"]
-    GHC.setContext [
-      GHC.IIDecl $ (
-         (GHC.simpleImportDecl . GHC.mkModuleName $ name) {GHC.ideclQualified = True})
-      | name <- names]
-
-    mapM GHC.getInfo =<< GHC.getNamesInScope
-
-    GHC.compileExpr "Prelude.filter"
-
- where logHandler :: IORef String -> LogAction
-       logHandler ref dflags severity srcSpan style msg =
-           case severity of
-             SevError ->  modifyIORef' ref (++ printDoc)
-             SevFatal ->  modifyIORef' ref (++ printDoc)
-             _        ->  return () -- ignore the rest
-         where cntx = initSDocContext dflags style
-               locMsg = mkLocMessage severity srcSpan msg
-               printDoc = show (runSDoc locMsg cntx)
-       onlyTycs :: [Maybe (TyThing, Fixity, [ClsInst])] -> [TyCon]
-       onlyTycs infos = [ t | Just (ATyCon t, _, _) <- infos]
-
-       onlyIDs :: [Maybe (TyThing, Fixity, [ClsInst])] -> [Id]
-       onlyIDs infos = [ i | Just (AnId i, _, _) <- infos ]
-
-       onlyDaCons :: [Maybe (TyThing, Fixity, [ClsInst])] -> [DataCon]
-       onlyDaCons infos = [ i | Just (ADataCon i, _, _) <- infos ]-}
+importSrcModules sess paths = do
+  srcModuleNames <- performGHCOps Nothing sess $ do
+    GHC.setTargets [GHCHscTypes.Target {
+                       GHCHscTypes.targetId = GHCHscTypes.TargetFile (T.unpack path) Nothing,
+                       GHCHscTypes.targetAllowObjCode = True,
+                       GHCHscTypes.targetContents     = Nothing}             | path <- paths]
+    moduleGraph <- GHC.depanal [] True
+    curiis      <- GHC.getContext
+    loadOK      <- GHC.load GHC.LoadAllTargets
+    GHC.setContext curiis
+    case loadOK of
+      GHC.Succeeded ->
+        return [T.pack . GHCModule.moduleNameString
+                . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
+      GHC.Failed    -> return []
+  importLibModules sess srcModuleNames

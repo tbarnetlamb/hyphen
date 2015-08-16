@@ -38,3 +38,14 @@ def precache_modules(names):
 
     """
     module_cache.update(hslowlevel.import_lib(*names))
+
+def fetch_source_modules(paths):
+    """Invoke hslowlevel.import_src and install the resulting modules into
+    our cache. (import_src compiles a given collection of source files
+    and loads the resulting modules.) The low-level layer will enforce
+    that import_src not be called more than once per program run (to
+    ensure that we don't hae binary-incompatible objects with the same
+    types floating about, which could happen if someone changed the
+    source between import_src calls.)
+    """
+    module_cache.update(hslowlevel.import_src(*paths))

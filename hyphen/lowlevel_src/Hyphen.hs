@@ -562,7 +562,7 @@ hyphen_access_basics_core stableSessionPtr pyargsTuple =
     sess  <- lift $ deRefStablePtr (
       castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
     nArgs <- treatingAsErr (-1) $ pyTuple_Size pyargsTuple
-    check (nArgs == 0) $ "hyphen.hyphen_import_src: no arguments expected."
+    check (nArgs == 0) $ "hyphen.access_basics: no arguments expected."
     objs <- accessBasics sess
     pythonateHDict (treatingAsErr nullPyObj . pythonateText)
       (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs

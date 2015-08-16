@@ -181,6 +181,7 @@ def marshall_module(data_namespace, type_namespace, module_to_write):
             module_to_write.__dict__[name] = image
         module_to_write._[name]            = image
 
+
 class HaskellFinderLoader():
     """Implement the python finder/loader protocol to allow importing of
     Haskell objects; see PEP302.

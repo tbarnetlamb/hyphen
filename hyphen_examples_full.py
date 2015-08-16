@@ -25,7 +25,7 @@ False
 b'foo'
 
 >>> hs.Prelude.id([1, 2, 3])
-<hs.GHC.Types.[] object of Haskell type [GHC.Integer.Integer], containing '[1,2,3]'>
+<hs.GHC.Types.[] object of Haskell type [GHC.Integer.Type.Integer], containing '[1,2,3]'>
 
 >>> hs.Prelude.id([1, '2', 3])
 Traceback (most recent call last):
@@ -41,22 +41,22 @@ Traceback (most recent call last):
 TypeError: must be int, not float
 
 >>> hs.Prelude.id((1, 2.0, 'foo'))
-<hs.GHC.Tuple.(,,) object of Haskell type (GHC.Integer.Integer, GHC.Types.Float, Data.Text.Internal.Text), containing '(1,2.0,"foo")'>
+<hs.GHC.Tuple.(,,) object of Haskell type (GHC.Integer.Type.Integer, GHC.Types.Float, Data.Text.Internal.Text), containing '(1,2.0,"foo")'>
 
 >>> hs.Prelude.id((True, 1+2.j))
 <hs.GHC.Tuple.(,) object of Haskell type (GHC.Types.Bool, Data.Complex.Complex GHC.Types.Float), containing '(True,1.0 :+ 2.0)'>
 
 >>> hs.Prelude.id({1 : True, 2 : False})
-<hs.Data.Map.Base.Map object of Haskell type Data.Map.Base.Map GHC.Integer.Integer GHC.Types.Bool, containing 'fromList [(1,True),(2,False)]'>
+<hs.Data.Map.Base.Map object of Haskell type Data.Map.Base.Map GHC.Integer.Type.Integer GHC.Types.Bool, containing 'fromList [(1,True),(2,False)]'>
 
 >>> hs.Prelude.id({1, 2})
-<hs.Data.Set.Base.Set object of Haskell type Data.Set.Base.Set GHC.Integer.Integer, containing 'fromList [1,2]'>
+<hs.Data.Set.Base.Set object of Haskell type Data.Set.Base.Set GHC.Integer.Type.Integer, containing 'fromList [1,2]'>
 
 (Next 2 tests written in a funny way because Data.Maybe.Maybe moved to GHC.Base,
 and we want a test that passes both before and after the move)
 
 >>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)).replace('GHC.Base', 'Data.Maybe')
-"<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC.Integer.Integer, containing 'Just 1'>"
+"<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Just 1'>"
 
 >>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)).replace('GHC.Base', 'Data.Maybe')
 "<hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Nothing'>"
@@ -94,6 +94,12 @@ True
 >>> 3 in myset
 False
 
+>>> hyphen.find_and_load_haskell_source()
+>>> import hs.Test
+>>> hs.Test.Test
+<class 'hs.Test.Test'>
+>>> hs.Test.foo(3)
+4
 """
 
 if __name__ == "__main__":

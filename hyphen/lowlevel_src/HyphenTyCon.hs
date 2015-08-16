@@ -97,7 +97,7 @@ tyConFromTypeableTyCon knd ghcTyc
           Data.Typeable.tyConPackage ghcTyc, Data.Typeable.tyConModule ghcTyc,
           Data.Typeable.tyConName ghcTyc]
         (p, m) = Map.findWithDefault (p0, m0) (p0, m0) exceptionalLookups
-    in mkTyCon p m n (InExplicitModuleNamed m) knd False
+    in mkTyCon p m0 n (InExplicitModuleNamed m) knd False
 
 fnTyCon :: TyCon
 fnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "(->)")
