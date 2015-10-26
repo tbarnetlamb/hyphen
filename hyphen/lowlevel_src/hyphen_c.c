@@ -9,113 +9,23 @@ extern void __stginit_Hyphen ( void );
 
 #include "structmember.h"
 
-/* --------------------------------------------------------------------- */
 
 static PyObject *HsException;
 static HsPtr ghc_interpreter_state = 0;
 static HsBool ghc_srcmodules_loaded = 0;
 
-HsPtr
-pythonateInt(HsInt i)
-{
-  /* HsInt is 32 or 64 bit to match sizeof(void*), without regard to the
-     definition of c 'long'*/
-#if defined(SIZEOF_LONG_LONG) && SIZEOF_LONG != SIZEOF_VOID_P && SIZEOF_LONG_LONG == SIZEOF_VOID_P
-  return PyLong_FromLongLong(i);
-#else
-  return PyLong_FromLong(i);
-#endif
-}
-
-HsPtr
-pythonateFloat(HsFloat i)
-{
-  return PyFloat_FromDouble(i);
-}
-
-HsPtr
-pythonateDouble(HsDouble i)
-{
-  return PyFloat_FromDouble(i);
-}
-
-HsPtr
-pythonateUTF16Ptr(const Py_UCS2* s, HsInt size)
-{
-  return PyUnicode_DecodeUTF16((char*) s, size*2, NULL, NULL);
-}
-
-HsPtr
-pythonateBytePtr(const char* s, HsInt size)
-{
-  return PyBytes_FromStringAndSize(s, size);
-}
-
-HsPtr
-pythonateTrue()
-{
-  Py_RETURN_TRUE;
-}
-
-HsPtr
-pythonateFalse()
-{
-  Py_RETURN_FALSE;
-}
-
-HsPtr
-pythonateIntegerFromStr(const Py_UCS2* s, HsInt size)
-{
-  PyObject *str, *num;
-  str = PyUnicode_DecodeUTF16((char*) s, size*2, NULL, NULL);
-  if (!str)
-    {
-      return 0;
-    }
-  
-  num = PyLong_FromUnicodeObject(str, 16);
-  if (!num)
-    {
-      Py_DECREF(str);
-      return 0;
-    }
-  return num;
-}
-
-HsPtr
-c_getHsExceptionAttr(HsPtr obj)
-{
-  PyObject *ret, *ty, *val, *tb;
-  ret = PyObject_GetAttrString(obj, "hs_exception");
-  if (PyErr_Occurred()) { /* eat any exception */
-    PyErr_Fetch(&ty, &val, &tb);
-    Py_XDECREF(ty);
-    Py_XDECREF(val);
-    Py_XDECREF(tb);
-  }
-  return ret;
-}
-
-HsPtr
-c_pyTypeErr(const char *str)
-{
-  PyErr_SetString(PyExc_TypeError, str);
-  return 0;
-}
-
-HsPtr
-c_pyValueErr(const char *str)
-{
-  PyErr_SetString(PyExc_ValueError, str);
-  return 0;
-}
-
-HsPtr
-pyErr_NoMemory()
-{
-  PyErr_NoMemory();
-  return 0;
-}
+/*********************************************************************
+ *  We first have a large number of functions that just wrap Python
+ *  API functions. We do this wrapping because we give our function
+ *  (e.g. pyErr_Fetch below) a type signature that exactly matches
+ *  what it ought to have given that we're going to foreign import it
+ *  into Haskell (so the pointers are HsPtrs and so on). Thus the C
+ *  compiler checks compatibility between the parameters (with types
+ *  like HsPtr) and whatever types the Python functions expect on this
+ *  platform. (Below, we also have several places where we do wrapping
+ *  'the otehr way round', wrapping a Haskell function before we pass
+ *  it to Python to check the C compiler doesn't complain about the
+ *  types.)*/
 
 HsInt
 pyErr_CheckSignals()
@@ -156,12 +66,16 @@ pyTuple_New(HsInt sz)
 HsPtr
 pyTuple_GET_ITEM(HsPtr a, HsInt i)
 {
+  /* For this, an additional reason we need to wrap is that it's a
+     macro! */
   return PyTuple_GET_ITEM(a, i);
 }
 
 void
 pyTuple_SET_ITEM(HsPtr a, HsInt i, HsPtr v)
 {
+  /* For this, an additional reason we need to wrap is that it's a
+     macro! */
   PyTuple_SET_ITEM(a, i, v);
 }
 
@@ -239,26 +153,6 @@ pyModule_AddObject(HsPtr module, const char *name, HsPtr value)
 }
 
 HsPtr
-pyGILState_Ensure()
-{
-  PyGILState_STATE *state = malloc(sizeof(PyGILState_STATE));
-  if (state) {
-    *state = PyGILState_Ensure();
-    return state;
-  } else {
-    return PyErr_NoMemory();
-  }
-  return state;
-}
-
-void
-pyGILState_Release(HsPtr state)
-{
-  PyGILState_Release(*(PyGILState_STATE*) state);
-  free(state);
-}
-
-HsPtr
 pyEval_SaveThread()
 {
   return PyEval_SaveThread();
@@ -268,6 +162,136 @@ void
 pyEval_RestoreThread(HsPtr state)
 {
   PyEval_RestoreThread(state);
+}
+
+/*********** END BIG CLOCK OF WRAPPED PYTHON API FNS ************/
+
+
+/***********************************************************************
+ * These 'Pythonate' C functions convert C types to pointers to Python
+ * objects representing the same value. So for instance pythonateFloat
+ * converts a c float to a pointer to a python float encoding the same
+ * value. */
+
+HsPtr
+pythonateInt(HsInt i)
+{
+  /* HsInt is 32 or 64 bit to match sizeof(void*), without regard to the
+     definition of c 'long'*/
+#if defined(SIZEOF_LONG_LONG) && SIZEOF_LONG != SIZEOF_VOID_P && SIZEOF_LONG_LONG == SIZEOF_VOID_P
+  return PyLong_FromLongLong(i);
+#else
+  return PyLong_FromLong(i);
+#endif
+}
+
+HsPtr
+pythonateFloat(HsFloat i)
+{
+  return PyFloat_FromDouble(i);
+}
+
+HsPtr
+pythonateDouble(HsDouble i)
+{
+  return PyFloat_FromDouble(i);
+}
+
+HsPtr
+pythonateUTF16Ptr(const Py_UCS2* s, HsInt size)
+{
+  /* Create a python string object from a pointer to UTF16 data and a
+     string length. */
+  return PyUnicode_DecodeUTF16((char*) s, size*2, NULL, NULL);
+}
+
+HsPtr
+pythonateBytePtr(const char* s, HsInt size)
+{
+  /* Create a python bytes object from a pointer to data and a string length. */
+  return PyBytes_FromStringAndSize(s, size);
+}
+
+HsPtr
+pythonateTrue()
+{
+  Py_RETURN_TRUE;
+}
+
+HsPtr
+pythonateFalse()
+{
+  Py_RETURN_FALSE;
+}
+
+HsPtr
+pythonateIntegerFromStr(const Py_UCS2* s, HsInt size)
+{
+  /* Create a python integer object from a pointer to a buffer
+     containing the number encoded in hex as a UTF16 string. Only used
+     for numbers too long to fit in a long. */
+  PyObject *str, *num;
+  str = PyUnicode_DecodeUTF16((char*) s, size*2, NULL, NULL);
+  if (!str)
+    {
+      return 0;
+    }
+
+  num = PyLong_FromUnicodeObject(str, 16);
+  if (!num)
+    {
+      Py_DECREF(str);
+      return 0;
+    }
+  return num;
+}
+
+/***********************************************************************
+ * Exception related stuff... */
+
+/* Convenience function to see if an object has an hs_exception
+   member, and if so return it. */
+
+HsPtr
+c_getHsExceptionAttr(HsPtr obj)
+{
+  PyObject *ret, *ty, *val, *tb;
+  ret = PyObject_GetAttrString(obj, "hs_exception");
+  if (PyErr_Occurred()) { /* eat any exception */
+    PyErr_Fetch(&ty, &val, &tb);
+    Py_XDECREF(ty);
+    Py_XDECREF(val);
+    Py_XDECREF(tb);
+  }
+  return ret;
+}
+
+/* Raise a python TypeError */
+
+HsPtr
+c_pyTypeErr(const char *str)
+{
+  PyErr_SetString(PyExc_TypeError, str);
+  return 0;
+}
+
+/* Raise a python ValueError */
+
+HsPtr
+c_pyValueErr(const char *str)
+{
+  PyErr_SetString(PyExc_ValueError, str);
+  return 0;
+}
+
+/* Functions to return the (built-in) Python NoMemory exception, and
+   various other exception objects */
+
+HsPtr
+pyErr_NoMemory()
+{
+  PyErr_NoMemory();
+  return 0;
 }
 
 HsPtr
@@ -330,8 +354,91 @@ py_None()
   Py_RETURN_NONE;
 }
 
+/************************************************************************
+ * Now we have more miscellaneous C functions, generally thin wrappers
+ * over the Python API */
 
-/* --------------------------------------------------------------------- */
+/* Ensure we have the GIL; unlike the core python version, this
+   mallocs the space we need */
+
+HsPtr
+pyGILState_Ensure()
+{
+  PyGILState_STATE *state = malloc(sizeof(PyGILState_STATE));
+  if (state) {
+    *state = PyGILState_Ensure();
+    return state;
+  } else {
+    return 0;
+  }
+  return state;
+}
+
+/* Ensure we have the GIL; unlike the core python version, this
+   imagines the space is on the heap and we should free it */
+
+void
+pyGILState_Release(HsPtr state)
+{
+  PyGILState_Release(*(PyGILState_STATE*) state);
+  free(state);
+}
+
+/* Code for switching between signal handlers. See the main docs for
+   hte reson that we might want to do this. Note that when we 'install
+   the Haskell handler', we actually don't simply install the vanilla
+   Haskell handler but our own custom handler which passes things to
+   the Haskell handler but also records that it ran. The reason to do
+   this is that if an signal is delivered just before a Haskell ->
+   Python switch, we want to know that it has happened so that we can
+   give Haskell a chance to service the signal. Which it will not do
+   automatically. */
+
+static PyOS_sighandler_t haskell_siginthandler = 0;
+static PyOS_sighandler_t python_siginthandler  = 0;
+static volatile int      signal_count          = 0;
+
+static void
+compound_sigint_handler(int signum)
+{ /* Our private version of the Haskell signal handler */
+  ++signal_count;
+  if (haskell_siginthandler)
+    {
+      (*haskell_siginthandler)(signum);
+    }
+}
+
+HsInt
+c_installHaskellCtrlCHandler()
+{
+#if !defined(mingw32_HOST_OS)
+  if (PyOS_getsig(SIGINT) == python_siginthandler     && haskell_siginthandler)
+    {
+      PyOS_setsig(SIGINT, &compound_sigint_handler);
+    }
+#endif
+  return signal_count;
+}
+
+HsInt
+c_reinstallPythonCtrlCHandler()
+{
+#if !defined(mingw32_HOST_OS)
+  if (PyOS_getsig(SIGINT) == &compound_sigint_handler && python_siginthandler)
+    {
+      PyOS_setsig(SIGINT, python_siginthandler);
+    }
+#endif
+  return signal_count;
+}
+
+/******************************************************************
+ *  Next we define the TyCon Python type
+ *
+ *  (Reminder; we create three new Python Types; TyCon, HsType and
+ *  HsObjRaw. Each of these is a thin wrapper over a stableptr to a
+ *  Haskell object of a corresponding Haskell type (TyCon, HsType and
+ *  HsObj respectively.)*/
 
 typedef struct {
     PyObject_HEAD
@@ -350,7 +457,7 @@ static Py_hash_t
 TyCon_hash(PyObject *self)
 {
   long foo = tycon_hash(self);
-  if (foo==-1)
+  if (foo==-1) /* Python hashes aren't allowed to be -1 (means failure) */
     foo = -2;
   return foo;
 }
@@ -371,7 +478,7 @@ TyCon_init(TyCon *self, PyObject *args, PyObject *kwds)
 
 static PyObject *
 TyCon_call(PyObject *self, PyObject *args, PyObject *kwargs)
-{
+{ /*Pass this over to the Haskell side*/
   return tycon_call(self, args, kwargs);
 }
 
@@ -451,12 +558,16 @@ static PyTypeObject TyConType = {
   TyCon_new,                 /* tp_new */
 };
 
+/* Given a pointer to a Python TyCon, extract the stable ptr to the
+   underlying Haskell object */
 HsPtr
 c_unwrapPythonTyCon(HsPtr self)
 {
   return ((TyCon*) self)->stablePtr;
 }
 
+/* Given a Stable pointer to a Haskell TyCon, wrap it into a Python
+   TyCon*/
 HsPtr
 c_wrapPythonTyCon(HsPtr stablePtr)
 {
@@ -478,7 +589,13 @@ pyTyCon_Check(HsPtr obj)
   return PyObject_IsInstance(obj, (PyObject*) &TyConType);
 }
 
-/* --------------------------------------------------------------------- */
+/************************************************************
+ *  Next we define the HsType Python type
+ *
+ *  (Reminder; we create three new Python Types; TyCon, HsType and
+ *  HsObjRaw. Each of these is a thin wrapper over a stableptr to a
+ *  Haskell object of a corresponding Haskell type (TyCon, HsType and
+ *  HsObj respectively.)*/
 
 typedef struct {
     PyObject_HEAD
@@ -497,7 +614,7 @@ static Py_hash_t
 HsType_hash(PyObject *self)
 {
   long foo = hstype_hash(self);
-  if (foo==-1)
+  if (foo==-1)  /* Python hashes aren't allowed to be -1 (means failure) */
     foo = -2;
   return foo;
 }
@@ -505,12 +622,16 @@ HsType_hash(PyObject *self)
 static PyObject *
 HsType_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
+  /* We first construct the underling Haskell object for the new
+     HsType we want to expose to python. (This is mostly done in the
+     haskell hstype_new.) */
   HsType *self;
   HsPtr stablePtr = 0;
   int   retval    = hstype_new(args, kwds, &stablePtr);
   if (retval < 0)
     return 0;
 
+  /* Then we allocate a Python HsType wrapper. */
   self = (HsType*) type->tp_alloc(type, 0);
   if (self != NULL) {
     self->stablePtr = stablePtr;
@@ -532,7 +653,7 @@ static PyMemberDef HsType_members[] = {
 };
 
 static PyMethodDef HsType_methods[] = {
-  {"subst",(PyCFunction) hstype_subst, METH_KEYWORDS | METH_VARARGS, 
+  {"subst",(PyCFunction) hstype_subst, METH_KEYWORDS | METH_VARARGS,
                                  "Substitute for the free variables in the type."},
   {NULL}  /* Sentinel */
 };
@@ -590,11 +711,17 @@ static PyTypeObject HsTypeType = {
   HsType_new,                /* tp_new */
 };
 
+/* Given a pointer to a Python HsType, extract the stable ptr to the
+   underlying Haskell object */
+
 HsPtr
 c_unwrapPythonHsType(HsPtr self)
 {
   return ((TyCon*) self)->stablePtr;
 }
+
+/* Given a Stable pointer to a Haskell HsType, wrap it into a Python
+   HsType*/
 
 HsPtr
 c_wrapPythonHsType(HsPtr stablePtr)
@@ -610,6 +737,9 @@ c_wrapPythonHsType(HsPtr stablePtr)
 
   return (PyObject *)self;
 }
+
+/* Given a tuple which consists of a single HsType, pull out the
+   python HsType, else raise a nice error */
 
 HsPtr
 parseTupleToPythonHsType(HsPtr args)
@@ -628,8 +758,13 @@ pyHsType_Check(HsPtr obj)
   return PyObject_IsInstance(obj, (PyObject*) &HsTypeType);
 }
 
-/* --------------------------------------------------------------------- */
-
+/************************************************************
+ *  Next we define the HsObjRaw Python type
+ *
+ *  (Reminder; we create three new Python Types; TyCon, HsType and
+ *  HsObjRaw. Each of these is a thin wrapper over a stableptr to a
+ *  Haskell object of a corresponding Haskell type (TyCon, HsType and
+ *  HsObj respectively.)*/
 
 typedef struct {
     PyObject_HEAD
@@ -647,12 +782,16 @@ HsObjRaw_dealloc(HsObjRaw* self)
 static PyObject *
 HsObjRaw_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
+  /* We first construct the underling Haskell object for the new
+     HsObj we want to expose to python. (This is mostly done in the
+     haskell hsobjraw_new.) */
   HsObjRaw *self;
   HsPtr     objStablePtr = 0;
   int       retval = hsobjraw_new(args, kwds, &objStablePtr);
   if (retval < 0)
     return 0;
 
+  /* Then we allocate a Python HsObjRaw wrapper. */
   self = (HsObjRaw *) type->tp_alloc(type, 0);
   if (self != NULL) {
     self->objStablePtr = objStablePtr;
@@ -727,6 +866,9 @@ static PyTypeObject HsObjRawType = {
   HsObjRaw_new,                 /* tp_new */
 };
 
+/* Given a pointer to a Python HsObjRaw, extract the stable ptr to the
+   underlying Haskell object */
+
 HsPtr
 c_wrapPythonHsObjRaw(HsPtr objStablePtr)
 {
@@ -742,11 +884,17 @@ c_wrapPythonHsObjRaw(HsPtr objStablePtr)
   return (PyObject *)self;
 }
 
+/* Given a Stable pointer to a Haskell HsObjRaw, wrap it into a Python
+   HsObjRaw*/
+
 HsPtr
 c_unwrapPythonHsObjRaw(HsPtr self)
 {
   return ((HsObjRaw*) self)->objStablePtr;
 }
+
+/* Given a tuple which consists of a single HsObjRaw, pull out the
+   python HsObjRaw, else raise a nice error */
 
 HsPtr
 parseTupleToPythonHsObjRaw(HsPtr args)
@@ -765,7 +913,9 @@ pyHsObjRaw_Check(HsPtr obj)
   return PyObject_IsInstance(obj, (PyObject*) &HsObjRawType);
 }
 
-/* --------------------------------------------------------------------- */
+/************************************************************
+ *  Define the remaining functions that we will expose at module
+ *  level, and given the module function table */
 
 static PyObject *
 hyphen_wrap_pyfn(PyObject *self, PyObject *args)
@@ -883,7 +1033,7 @@ to_haskell_Integer(PyObject *self, PyObject *args)
   int overflow=0;
   long as_long = PyLong_AsLongAndOverflow(int_obj, &overflow);
   if (PyErr_Occurred())
-    {      
+    {
       return NULL;
     }
   else if ((!overflow) && as_long <= HS_INT_MAX && as_long >= HS_INT_MIN)
@@ -961,46 +1111,6 @@ hyphen_import_src(PyObject *self, PyObject *args)
 
 /* --------------------------------------------------------------------- */
 
-static PyOS_sighandler_t haskell_siginthandler = 0;
-static PyOS_sighandler_t python_siginthandler  = 0;
-static volatile int      signal_count          = 0;
-
-static void
-compound_sigint_handler(int signum)
-{
-  ++signal_count;
-  if (haskell_siginthandler)
-    {
-      (*haskell_siginthandler)(signum);
-    }
-}
-
-HsInt
-c_installHaskellCtrlCHandler()
-{
-#if !defined(mingw32_HOST_OS)
-  if (PyOS_getsig(SIGINT) == python_siginthandler     && haskell_siginthandler)
-    {
-      PyOS_setsig(SIGINT, &compound_sigint_handler);
-    }
-#endif
-  return signal_count;
-}
-
-HsInt
-c_reinstallPythonCtrlCHandler()
-{
-#if !defined(mingw32_HOST_OS)
-  if (PyOS_getsig(SIGINT) == &compound_sigint_handler && python_siginthandler)
-    {
-      PyOS_setsig(SIGINT, python_siginthandler);
-    }
-#endif
-  return signal_count;
-}
-
-/* --------------------------------------------------------------------- */
-
 /* List of functions defined in the module */
 
 PyDoc_STRVAR(module_doc,
@@ -1035,23 +1145,13 @@ static PyMethodDef HyphenMethods[] = {
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
-static void pyhs_free(void *to_free)
-{
-  if (ghc_interpreter_state)
-    {
-      close_GHC_state(ghc_interpreter_state);
-      hs_free_stable_ptr(ghc_interpreter_state);
-    }
-  ghc_interpreter_state = 0;
-#if !defined(mingw32_HOST_OS)
-  PyOS_sighandler_t sigint_handler = PyOS_getsig(SIGINT);
-#endif
-  hs_exit();
-#if !defined(mingw32_HOST_OS)
-  PyOS_setsig(SIGINT, sigint_handler);
-#endif
-  PyObject_Del(to_free);
-}
+/************************************************************
+ *  Finally, give the Module object itself, and the PyInit_hslowlevel
+ *  function that is the main entry point for the application. Also
+ *  give the pyhs_free function that we put in the module to clean up
+ *  our state */
+
+static void pyhs_free(void *to_free);
 
 static struct PyModuleDef hyphenmodule = {
   PyModuleDef_HEAD_INIT,
@@ -1068,7 +1168,11 @@ static struct PyModuleDef hyphenmodule = {
 
 PyMODINIT_FUNC
 PyInit_hslowlevel(void)
-{
+{ /* Main entry point for our extension. We must create the python
+     objects corresponding to the types we want to create, and of
+     course to our module itself, and suitably populate and register
+     them as appropriate. We also, of course, msut start the Haskell
+     runtime...*/
   PyObject *m;
 
   m = PyModule_Create(&hyphenmodule);
@@ -1156,3 +1260,20 @@ PyInit_hslowlevel(void)
   return m;
 }
 
+static void pyhs_free(void *to_free)
+{ /* Clean up; the module is being un-loaded*/
+  if (ghc_interpreter_state)
+    {
+      close_GHC_state(ghc_interpreter_state);
+      hs_free_stable_ptr(ghc_interpreter_state);
+    }
+  ghc_interpreter_state = 0;
+#if !defined(mingw32_HOST_OS)
+  PyOS_sighandler_t sigint_handler = PyOS_getsig(SIGINT);
+#endif
+  hs_exit();
+#if !defined(mingw32_HOST_OS)
+  PyOS_setsig(SIGINT, sigint_handler);
+#endif
+  PyObject_Del(to_free);
+}

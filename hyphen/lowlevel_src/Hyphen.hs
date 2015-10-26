@@ -12,6 +12,7 @@ import Control.Monad.State.Strict
 import Control.Exception (
   SomeException, toException, Exception, assert, AsyncException(..))
 import Control.Concurrent
+import Control.DeepSeq
 import Data.IORef
 import Data.Monoid
 import Data.Word
@@ -59,17 +60,26 @@ import HyphenExceptions
 
 ------------------------------------
 
+-- | Like unfoldr, but for a Monadic action
+
 unfoldrM :: (Monad m) => (b -> m (Maybe (a, b))) -> b -> m [a]
 unfoldrM fn seed = do res0 <- fn seed
                       case res0 of
                         Nothing          -> return []
                         Just (r, seed')  -> liftM (r :) (unfoldrM fn seed')
 
+-- | Version of pyTypeErr which also formats the type error for you
+-- (takes a parameter the object that was actually recieved, and a
+-- string describing the type that was expected).
+
 pyTypeErr'' :: String -> PyObj -> PythonM a
 pyTypeErr'' exp pyObj = do
   py_str    <- treatingAsErr nullPyObj $ pyObject_Str pyObj
   got       <- textFromPythonObj py_str
   pyTypeErr' $ "Expected " ++ exp ++ ", not " ++ T.unpack got
+
+-- | Convert a python dict, whose keys are python strings, to a Map
+-- Txt PyObjin the obvious way. Useful for processing kwargs.
 
 unPythonateKwargs :: PyObj -> PythonM (Map Text PyObj)
 unPythonateKwargs dict = if dict == nullPyObj then return Map.empty else do
@@ -89,6 +99,19 @@ unPythonateKwargs dict = if dict == nullPyObj then return Map.empty else do
               return $ Just ((key', val), ())
         )))
 
+-- | Convenience function to parse keyword arguments for a python
+-- function. Takes a list of strings (the names of allowed keyword
+-- arguments), a string (the name of the python function whose kwargs
+-- we're parsing; just used for error messages); a Map Text PyObj
+-- containing the kwargs as provided by the user (which the user will
+-- usually have created by caling unPythonateKwargs on the raw python
+-- dict provided by python), we return a [Maybe PyObj]. This list will
+-- always have the same length as the list of expected keyword
+-- arguments; in each place, it will either provide the PyObj that was
+-- provided as the value for the kwarg named in the corresponding
+-- position in the list of expected arguments, or Nothing if that
+-- argument was not provided.
+
 readKwargs :: [String] -> String -> Map Text PyObj -> PythonM [Maybe PyObj]
 readKwargs expected errstr kwargs =
   let expected'  = map T.pack expected
@@ -101,10 +124,16 @@ readKwargs expected errstr kwargs =
 
 ------------------------------
 
+-- | Acquire the GIL and check python signals, raising and translating
+-- to Haskell any exceptions that are seen to be necessary in the
+-- light of the signal state.
+
 checkPythonSignals :: IO ()
 checkPythonSignals = do
   acquiringGIL . translatePyExceptionIfAny . treatingAsErr (-1) $ pyErr_CheckSignals
   return ()
+
+-- |
 
 servicingPySignalHandlers :: forall a. IO a -> IO a
 servicingPySignalHandlers act = do
@@ -128,6 +157,39 @@ threadToInterruptStack :: IORef [System.Mem.Weak.Weak ThreadId]
 threadToInterruptStack = unsafePerformIO (newIORef [])
 
 #if !defined(mingw32_HOST_OS)
+-- | Carry out the provided IO action, switching from the currently
+-- installed ctrl-C handler (which will usually be the Python one) to
+-- the Haskell one, so that any ctrl-C presses while the operation is
+-- being performed will result in proper KeyboardInterrupt exceptions
+-- being raised. We don't directly install a Haskell handler (as per
+-- setupHaskellCtrlCHandler below), but get the C layer to install a
+-- special 'compound' Haskell ctrl-C handler. The reason we do this is
+-- that the way Haskell actually handles signals is a bit
+-- indirect. When we install a Haskell handler, Haskell in turn
+-- installs a C handler to get control of the signal. But running the
+-- C signal handler that was installed doesn't immediately and
+-- directly cause the Haskell handler that was installed to
+-- run. Instead it sets a flag, and the Haskell handler will run
+-- 'soon', when the RTS hits a context switch (reason for doing things
+-- this way is mostly that you're very limited in what you can do in a
+-- signal handler). So there's a possibility that, after we re-install
+-- the Python handler, we're in a situation where Haskell's C signal
+-- handler has seen an exception and set a flag saying that the
+-- Haskell handler should run; but we haven't run it yet. We want to
+-- make sure that the Haskell handler runs before we quit. This is
+-- where the 'compound' handler comes in. It lets us know whether the
+-- Haskell-installed C handler was ever triggered, and if it is we
+-- wait 1 second before continuing, which gives Haskell time to make
+-- sure the Handler is triggered. (Probably waiting 1 second is
+-- overkill; anything which invokes the scheduler is enough.)
+--
+-- (Note that there is a corresponding worry when we switch from the
+-- python signal handler to the Haskell one, since the
+-- python-installed C signal handler *also* jsut sets a flag and then
+-- later processes it. But it's easier this way because Python exposes
+-- the functionality to explicitly check the flag, so we just do so
+-- immediately after we've installed the Haskell signal handler.)
+
 catchingCtrlC :: IO a -> IO a
 catchingCtrlC = Exception.bracket before after . const
   where before       = do main_thread_id <- myThreadId
@@ -140,6 +202,9 @@ catchingCtrlC = Exception.bracket before after . const
                           atomicModifyIORef threadToInterruptStack $
                             \lst -> (drop 1 lst, ())
 
+-- | Set up a Haskell ctrl-C handler, and install it. Used by the C
+-- side, which takes a copy of this exception handler and uses it to
+-- build a 'compound exception handler'.
 foreign export ccall setupHaskellCtrlCHandler :: IO ()
 setupHaskellCtrlCHandler = do
   let handler = System.Posix.Signals.Catch $ do
@@ -157,13 +222,14 @@ setupHaskellCtrlCHandler = do
 
 ------------------------------
 
-releasingGIL :: PythonM a -> PythonM a
-releasingGIL =
-  MaybeT . Exception.bracket pyEval_SaveThread pyEval_RestoreThread . f . runMaybeT
-  where f action = (>> action) . guard . (/= nullPtr)
+releasingGIL :: IO a -> IO a
+releasingGIL = Exception.bracket pyEval_SaveThread pyEval_RestoreThread . const
 
 acquiringGIL :: IO a -> IO a
-acquiringGIL = Exception.bracket pyGILState_Ensure pyGILState_Release . const
+acquiringGIL = Exception.bracket pyGILState_Ensure' pyGILState_Release . const
+  where pyGILState_Ensure' = do st <- pyGILState_Ensure
+                                if (st == nullPtr) then Exception.throwIO HeapOverflow
+                                  else return st
 
 ------------------------------
 
@@ -435,19 +501,24 @@ addSimpleHsTypeObjsToModule module_ = liftM (fromMaybe (-1)) . runMaybeT $ do
   addSimpleHsTypeObjToModule module_ "hstype_Double"     (id :: Double     -> Double)
   return 0
 
-withHsObjRawOfType :: HsType -> (a -> IO PyObj) -> PyObj -> PyObj -> IO PyObj
+withHsObjRawOfType :: (NFData a) =>
+                      HsType -> (a -> IO PyObj) -> PyObj -> PyObj -> IO PyObj
 withHsObjRawOfType ty f _ pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
   obj   <- lift $ unwrapPythonHsObjRaw pyobj
-  translatingHsExcepts  . releasingGIL $ case obj of
+  let processObj obj = do releasingGIL (obj `deepseq` return ())
+                          f obj
+  translatingHsExcepts  $ case obj of
     MonoObj ty' ptr ->
-      if ty == ty' then lift (f $ Unsafe.Coerce.unsafeCoerce ptr) else
-        pyTypeErr' $ "Expected type " ++ T.unpack (typeName ty)
+      if ty == ty'
+      then (treatingAsErr nullPyObj . processObj $ Unsafe.Coerce.unsafeCoerce ptr)
+      else pyTypeErr' $ "Expected type " ++ T.unpack (typeName ty)
         ++ "; got " ++ T.unpack (typeName ty')
     _ ->   pyTypeErr' $ "Only monomorphic objects supported."
 
 
-withHsObjRawSimp :: (Typeable a) => (a -> IO PyObj) -> PyObj -> PyObj -> IO PyObj
+withHsObjRawSimp :: (Typeable a, NFData a) =>
+                    (a -> IO PyObj) -> PyObj -> PyObj -> IO PyObj
 withHsObjRawSimp fn = let
   typeConstrainer :: (a -> b) -> a
   typeConstrainer = const undefined
@@ -520,14 +591,14 @@ buildHaskellDouble   = formSimpleHsObjRaw
 
 ------------------------------------------------------------------
 
-pythonateModuleRet :: (HashMap Text Obj, HashMap Text TyNSElt) -> PythonM PyObj
+pythonateModuleRet :: (HashMap Text HsObj, HashMap Text TyNSElt) -> PythonM PyObj
 pythonateModuleRet (objs, tycelts) = pythonateTuple [
   prepareDict (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs,
   prepareDict (treatingAsErr nullPyObj . either wrapPythonTyCon wrapPythonHsType) tycelts]
   where prepareDict = pythonateHDict (treatingAsErr nullPyObj . pythonateText)
 
 wrapImport :: (GhcMonad.Session -> [Text] ->
-               MaybeT IO (HashMap Text (HashMap Text Obj, HashMap Text TyNSElt)))
+               MaybeT IO (HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt)))
               -> WStPtr -> PyObj -> IO PyObj
 wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   sess  <- lift $ deRefStablePtr (
@@ -590,7 +661,7 @@ hyphen_apply _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size pyargs
   check (nArgs > 1 ) $ "hyphen.apply: must have at least 2 arguments."
   check (nArgs <= 6) $ "hyphen.apply: must have at most 6 arguments."
-  let getArgChecked :: Int -> PythonM Obj
+  let getArgChecked :: Int -> PythonM HsObj
       getArgChecked idx = do
         pyobj <- lift $ pyTuple_GET_ITEM pyargs (idx - 1)
         ok    <- lift $ pyHsObjRaw_Check pyobj
@@ -609,7 +680,7 @@ hyphen_doio _ pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
   obj   <- lift $ unwrapPythonHsObjRaw pyobj
   act   <- promoteErr $ doIO obj
-  obj'  <- translatingHsExcepts . releasingGIL $ lift act
+  obj'  <- translatingHsExcepts . lift . releasingGIL $ act
   lift $ wrapPythonHsObjRaw obj'
 
 foreign export ccall hyphen_wrap_pyfn_impl   :: PyObj -> PyObj -> Int -> IO PyObj
@@ -641,7 +712,7 @@ hyphen_wrap_pyfn_impl fn tyPyo arityReq = liftM (fromMaybe nullPyObj) . runMaybe
   lift $ py_INCREF fn
   --lift $ py_INCREF fn
   fn' <- lift $ newForeignPtr addr_py_DECREF fn
-  let callTheFn :: [IO Obj] -> IO Any
+  let callTheFn :: [IO HsObj] -> IO Any
       callTheFn objs = acquiringGIL . translatePyExceptionIfAny $ do
         paramTup <- pythonateTuple $ map (
           treatingAsErr nullPyObj . (wrapPythonHsObjRaw =<<)) objs

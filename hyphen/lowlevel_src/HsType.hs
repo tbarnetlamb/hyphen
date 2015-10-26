@@ -24,7 +24,27 @@ import HyphenBase
 import HyphenKinds
 import HyphenTyCon
 
+-- | This module provides a Haskell representation of Haskell
+-- types. It is similar to the Data.Typeable built-in module, but it
+-- differs in that it can represent polymorphic types (that is, types
+-- with type variables in them), and that the type constructors within
+-- the types are encoded using our HyphenTyCon.TyCon type rather than
+-- Data.Typeable.TyCon: ours contains a bit more information (to wit,
+-- the kind and some information on how the type constructor can be
+-- 'found' in importable modules; see comments in HyphenTyCon for
+-- details).
+--
+-- Although (as mentioned above) we can represent polymorphic types,
+-- every type we represent has a fixed kind: we don't handle
+-- Kind-polymorphic beasts like @(a Text)@ where @a@ is a type
+-- variable. (This could have kind @*@, if @a@ has Kind @* -> *@, but
+-- could also have Kind @* -> *@, if @a@ had kind @* -> * -> *@, and
+-- so on...)
+
 ----
+
+-- | Simple wrapper type to represent a Variable. Just contains a Text
+-- giving the name of the variable.
 
 newtype Var    = Var    {getVar    :: Text} deriving (Eq, Ord, Show)
 
@@ -35,6 +55,34 @@ instance Hashable (Var) where
   hashWithSalt salt (Var v) = hashWithSalt salt v
 
 ----
+
+-- | Our representation for a Haskell type. The only 'true' fields
+-- here are typeHead and typeTail; all the other fields are computed
+-- from them and only present in the constructor for efficiency (so
+-- that, once computed, we remember their values). The head of a type
+-- is either a Type constructor, or a Variable with a kind. (Types
+-- like @((a :: * -> * -> *) Text Text)@ are legal in Haskell, but
+-- very rare). Note that in this example the Kind of the Variable must
+-- be fixed because we do not support Kind polymorphism of any nature:
+-- see second paragraph of comment at the top of the file.) The tail
+-- of the type is the set of other types to which the constructor has
+-- been applied.
+--
+-- Note that not all combinations of typeHead and typeTail are
+-- allowed: there might be a kind mismatch.
+--
+-- The smart constructors mkHsTypeSafe and mkHsType are the preferred
+-- way of building HsTypes from the 'true' fields.
+--
+-- typeHash is a hash or fingerprint for the type, stored once for
+-- fast access. typeKind is the Kind of the type as a whole: this can
+-- be figured out by taking the kind of the head and imagining that
+-- @N@ arguments have already been provided to it, where @N@ is the
+-- number of elemetns of the typeTail. typeFreeVars are all the free
+-- type variables in the type, together with the kinds they must have
+-- for the expression to make sense; this can be gleaned by scanning
+-- recursively for variables. typeName is the name of the type in
+-- standard Haskell notation.
 
 data HsType
   = HsType {
@@ -59,11 +107,16 @@ bracketedTypeName hst | never_bracket (typeHead hst)  = typeName hst
   where never_bracket (Left tyc) = isListTyCon tyc || isTupTyCon tyc
         never_bracket (Right _)  = False
 
+-- | Convenience function: put brackets round a string
+
 bracket :: Text -> Text
 bracket t = T.concat [T.pack "(",  t, T.pack ")"]
 
 instance Eq (HsType) where
   a == b = hash a == hash b
+
+-- | map the Variable names used in an HsType; useful for renaming
+-- variables.
 
 mapVars :: (Text -> Text) -> HsType -> HsType
 mapVars fn = process
@@ -72,8 +125,20 @@ mapVars fn = process
           tycon             -> mkHsType tycon                   rest
 
 
+-- | Secondary way of making an HsType from the 'true' fields, the
+-- head and the tail. As mentioned in the docstring for HsType itself,
+-- not all combinations of a head and a tail will be legal (some fail
+-- to Kind-check); in case of failure, this function gives an IO
+-- exception.
+
 mkHsType :: Either TyCon (Var, Kind) -> [HsType] -> HsType
 mkHsType head = either (error . T.unpack . getErrMsg) id . mkHsTypeSafe head
+
+-- | Main way of making an HsType from the 'true' fields, the head and
+-- the tail. As mentioned in the docstring for HsType itself, not all
+-- combinations of a head and a tail will be legal (some fail to
+-- Kind-check); in case of failure, this function gives a nice,
+-- monadic error message.
 
 mkHsTypeSafe :: Either TyCon (Var, Kind) -> [HsType] -> Either ErrMsg HsType
 mkHsTypeSafe head tail = let
@@ -136,10 +201,20 @@ mkHsTypeSafe head tail = let
         fvs <- Data.Traversable.mapM (either report (return . fst)) fvMap
         return $ HsType thash (force head) tail resultKind fvs name
 
+-- | Is this type monomorphic (free of type variables)?
+
 isMonoType :: HsType -> Bool
 isMonoType = Map.null . typeFreeVars
 
+-- | Given HsTypes representing types @A@ and @B@, construct the type
+-- of functions taking @A@ and returning @B@.
+
 fnHsType a b        = mkHsType (Left fnTyCon           ) [a, b]
+
+-- | Given an HsType which we hope desribes the type of functions from
+-- some type @A@ to some type @B@, return a pair containing HsTypes
+-- representing @A@ and @B@ respectively, or else a friendly error
+-- message saying why it couldn't be done.
 
 breakFnType :: HsType -> Either ErrMsg (HsType, HsType)
 breakFnType (HsType {typeHead=Left tc, typeTail=[fr, to]})
@@ -147,17 +222,35 @@ breakFnType (HsType {typeHead=Left tc, typeTail=[fr, to]})
 breakFnType ty = report $ "Trying to apply object of type '" ++ T.unpack (typeName ty)
                  ++ "', but this is not a function type."
 
+-- | Given an HsType, think of it as a function type A_1 -> A_2 ->
+-- .. -> A_n -> R, and return a list of HsTypes representing the
+-- argument types A_1, ..., A_n and an HsType representing the result
+-- type R; this is always possible because we may take the list A_i as
+-- empty (although we always make it as long as possible).
+
 breakFnTypeRec :: HsType -> ([HsType], HsType)
 breakFnTypeRec hst = go hst []
   where go hst sofar = case breakFnType hst of
           Left  _         -> (reverse sofar, hst)
           Right (fr, to)  -> go to (fr:sofar)
 
+-- | Given an HsType which we hope desribes the type of functions from
+-- some type @A@ to some type @B@, return a pair containing HsTypes
+-- representing @A@ and @B@ respectively, or else panic.
+
 breakFnTypeUnsafe :: HsType -> (HsType, HsType)
 breakFnTypeUnsafe (HsType {typeHead=Left tc, typeTail=[fr, to]})
   | tc == fnTyCon = (fr, to)
 breakFnTypeUnsafe ty = error $ "breakFnTypeUnsafe:'" ++ T.unpack (typeName ty)
                        ++ "' is not a function type."
+
+-- | Find and replace for types. Given a map of variables to types,
+-- and an HsType X, replace the variables with the chosen new types in
+-- X. If you try to use transformType to replace a variable with a
+-- type whose kind doesn't match the variable's kind, then
+-- transformType will panic as HsType's constructor complains. If you
+-- want to check to make sure this will not happen, see
+-- transformTypeAllowedCheck below.
 
 transformType :: Map Var HsType -> HsType -> HsType
 transformType dict = go
@@ -167,6 +260,14 @@ transformType dict = go
           Nothing                  -> mkHsType (Right (var, kind)) (map go tail)
           Just HsType {typeHead=head', typeTail=tail'}
                                    -> mkHsType head'       (tail' ++ map go tail)
+
+-- | If you try to use transformType to replace a variable with a type
+-- whose kind doesn't match the variable's kind, then transformType
+-- will panic as HsType's constructor complains. If you want to check
+-- to make sure this will not happen, use this
+-- transformTypeAllowedCheck function, which either returns a friendly
+-- error message explaining why the requested transformType is bogus,
+-- or () if it's safe to call transformType.
 
 transformTypeAllowedCheck :: Map Var HsType -> HsType -> Either ErrMsg ()
 transformTypeAllowedCheck substs original = do
@@ -184,6 +285,13 @@ transformTypeAllowedCheck substs original = do
   sequence_ . map snd . Map.toList $
     Map.intersectionWithKey checkKindCompatibility usableKinds substs
 
+-- | Given an HsType, think of it as a function type A_1 -> A_2 ->
+-- .. -> A_n -> R, and return a list of HsTypes representing the
+-- argument types A_1, ..., A_n and an HsType representing the result
+-- type R; this is always possible because we may take the list A_i as
+-- empty. We take n to be the provided integer max_peel if possible;
+-- if it's not possible, we make it as large as we can.
+
 peelArgTypes :: HsType -> Int -> ([HsType], HsType)
 peelArgTypes ty max_peel
   | max_peel == 0   = ([], ty)
@@ -192,12 +300,24 @@ peelArgTypes ty max_peel
                             (args', ret) = peelArgTypes rest (max_peel-1)
                         in  (arg1:args', ret)
 
+-- | Create an HsType from a TypeRep, in a way which only works in the
+-- special case that all the Type Constructors used in the TypeRep are
+-- of Kind @*@. (In other words when the type is a single type
+-- constructor.) Do not call outside this case!
+
 hsTypeFromSimpleTypeRep :: TypeRep -> HsType
 hsTypeFromSimpleTypeRep tr = let
   (con, args) = Data.Typeable.splitTyConApp tr
   args'       = map hsTypeFromSimpleTypeRep args
   con'        = tyConFromTypeableTyCon (simplKnd $ length args) con
   in mkHsType (Left con') args'
+
+-- | Get a string representation of the HsType that is suitable to use
+-- as its Python @repr@ (that is a string that, if executed in
+-- python+hyphen with appropriate imports, will evaluate to a python
+-- object which represents the HsType in question). Note that this
+-- depends on the high-level haskell/python bridge, so there's a bit
+-- of something like leaky abstraction here...
 
 hsTypeRepr :: HsType -> Text
 hsTypeRepr hst
@@ -212,21 +332,83 @@ hsTypeRepr hst
       Left   tyc     -> T.concat $ [
         tyConRepr tyc, T.pack "(", T.intercalate (T.pack ", ") tailRep, T.pack ")"]
 
+-- | A very technical but very important role in hyphen is played by
+-- *type forcers*, which exist only for *monomorphic* types. The idea
+-- of a type forcer is that it's a string that we can pass to the
+-- haskell compiler which will evaluate to the identity function on a
+-- particular type in question. The point of this is that we can apply
+-- such a thing to an polymorphic expression to produce a monomorphic
+-- realization of (the object encoded by) that expression.
+--
+-- In simple cases, this is just a matter of writing @(id :: <type> ->
+-- <type>)@. Not all cases are this simple, however, because sometimes
+-- we just can't name the type in question (so we can't write
+-- something that would go in the spot @<type>@ there). This is
+-- because it's possible for a Haskell module locally define a type
+-- constructor X and to export an entity whose type involves a X
+-- without exporting X. (This is considered by some to be a wart.) In
+-- our world, we see this in that not every @TyCLocation@ is built
+-- using @InExplicitModuleNamed@. So in more general cases, we end up
+-- doing something like the following. Pretend that [] is never
+-- exported. Then we can force something to have type [Int] by passing
+-- it through:
+--
+-- @
+--   (((const $ id) :: (x a -> a) -> x Int -> x Int) head)
+-- @
+--
+-- The basic idea here is that since head has type @[u] -> u@, to
+-- applying the @(const $ id)@ to head forces the @x@ in the
+-- explicitly given type signature to mean @[]@, so the @id@ we get is
+-- actually @id : [Int] -> [Int])@. Tada!
+--
+-- The rest of the code here is just a matter of doing this in
+-- general. We write a function from HsTypes to Texts that builds the
+-- name of the type which we want to force to (@x Int@) assuming that
+-- certain type variables (@x@ in this case) have been forced to be
+-- synonyms for certain type constructors. This code is in a WriterT
+-- monad transformer, and as it goes along it writes out pairs like
+-- @('head', 'x a')@ which means that @x@ will be forced be a synonym
+-- for the type constructor we want if we ensure that @x a@ matches
+-- the type of @head@. As we build this, we need a good supply of type
+-- variables, so we also have a state monad transformer to keep track
+-- of the next fresh variable. We acutally (for human convenience) use
+-- two stocks of variables: 'x variables' (which are variables that
+-- will eventually be set to type constructors we want to use) and 'a
+-- variables' which are just padding.
+
+makeTypeForcer :: HsType -> Text
+makeTypeForcer hst = let
+  (expr, _, constraints) = runRWS (makeTypeForcerM hst) () (0, 0)
+  nConstr   = length constraints
+  core      = bracket . T.concat $ (
+    (replicate nConstr $ T.pack "Prelude.const Prelude.$ ") ++ [T.pack "Prelude.id"])
+  typedCore = bracket . T.unwords $ (
+    [core, T.pack "::"] ++ intersperse (T.pack "->") (map snd constraints ++ [expr, expr]))
+  in bracket . T.unwords $ typedCore : map fst constraints
 
 type TypeForcerM = RWS () [(Text, Text)] (Int, Int)
+
+-- | Make a fresh 'x variable'; see above for what this means
 
 makeXVar :: TypeForcerM Text
 makeXVar = do (i0, i1) <- get
               put (i0, i1+1)
               return $ T.concat [T.pack "x", T.pack $ show i1]
 
+-- | Make a fresh 'a variable'; see above for what this means
+
 makeAVar :: TypeForcerM Text
 makeAVar = do (i0, i1) <- get
               put (i0+1, i1)
               return $ T.concat [T.pack "a", T.pack $ show i0]
 
+-- | Emit a constraint (like @('head', 'x a')@ in the example above)
+
 emitConstraint :: (Text, Text) -> TypeForcerM ()
 emitConstraint pair = tell [pair]
+
+-- | Make a forcer for a type constructor
 
 makeTypeHeadForcer :: HsType -> TypeForcerM Text
 makeTypeHeadForcer hst = case typeHead hst of
@@ -263,13 +445,3 @@ processPath v (i:is@(_:_)) = do
   mid  <- processPath v is
   tail <- sequence $ genericReplicate i makeAVar
   return . bracket . T.unwords $ hVar : mid : tail
-
-makeTypeForcer :: HsType -> Text
-makeTypeForcer hst = let
-  (expr, _, constraints) = runRWS (makeTypeForcerM hst) () (0, 0)
-  nConstr   = length constraints
-  core      = bracket . T.concat $ (
-    (replicate nConstr $ T.pack "Prelude.const Prelude.$ ") ++ [T.pack "Prelude.id"])
-  typedCore = bracket . T.unwords $ (
-    [core, T.pack "::"] ++ intersperse (T.pack "->") (map snd constraints ++ [expr, expr]))
-  in bracket . T.unwords $ typedCore : map fst constraints

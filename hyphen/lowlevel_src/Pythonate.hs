@@ -24,6 +24,27 @@ import qualified Data.ByteString.Unsafe
 
 import PythonBase
 
+-- | These pythonate functions convert Haskell values to pointers to
+-- Python objects representing the same value. Some are imported
+-- directly from C functions that do the same thing, for types where
+-- the FFI can interconvert directly between corresponding C and
+-- Haskell types. Others are slighltly higher level, taking a Haskell
+-- value that couldn't be directly set to C and massaging it so that
+-- its value can be 'pythonated' using the simpler functions already
+-- defined.
+--
+-- Many of these functions are just in the IO monad, but they still
+-- might set a Python exception condition. If they do set an
+-- exception, they return a null pointer. So they can be wrapped into
+-- proper PythonM operations via (treatingAsErr nullPtr). The reason
+-- we by default provide them as pre-wrapped is that in most cases
+-- calling one of these functions is the last thing we do before
+-- transferring control to Python, which will automatically interpret
+-- the null Ptr as meaning it has to check the exception condition; so
+-- checking for a null ptr return ourselves is in many cases totally
+-- superfluous and putting it in PythonM would make extra work for
+-- ourselves.
+
 foreign import ccall pythonateInt        :: Int        -> IO PyObj
 foreign import ccall pythonateFloat      :: Float      -> IO PyObj
 foreign import ccall pythonateDouble     :: Double     -> IO PyObj
@@ -61,6 +82,17 @@ pythonateInteger      i
   where pythonateIntegerFromStr' ptr i16
           = pythonateIntegerFromStr ptr (fromInteger $ toInteger i16)
 
+-- | Pythonate a general dictionary-like type. Requires a function to
+-- enumerate key-value pairs from the dictionary, a function to
+-- pythonate keys, and a function to pythonate values (and, of course,
+-- the dictionary we want to pythonate). In the PythonM monad, not
+-- just IO (in other words we correctly handle exceptions, stopping
+-- what we're doing and discarding python objects we already
+-- constructed that now do not have an owner); the pythonation
+-- functions provided by the user must similarly be in the PythonM
+-- monad (so the functions above cannot be used without a
+-- treatingAsErr nullPtr).
+
 pythonateDictCore :: (d a b -> [(a, b)])
                      -> (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> d a b
                      -> PythonM PyObj
@@ -75,13 +107,34 @@ pythonateDictCore enumfn kfn vfn map = do
   newDict <- treatingAsErr nullPyObj pyDict_New
   releasingOnFail newDict ((mapM (addKVPair newDict) $ enumfn map) >> return newDict)
 
+-- | Pythonate a Haskell Map. Requires a function to pythonate keys,
+-- and a function to pythonate values (and, of course, the dictionary
+-- we want to pythonate). In the PythonM monad, not just IO (in other
+-- words we correctly handle exceptions, stopping what we're doing and
+-- discarding python objects we already constructed that now do not
+-- have an owner) the pythonation functions provided by the user must
+-- similarly be in the PythonM monad (so the functions above cannot be
+-- used without a treatingAsErr nullPtr).
+
 pythonateDict :: (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> Map a b
                  -> PythonM PyObj
 pythonateDict = pythonateDictCore Map.toList
 
+-- | Pythonate a Haskell HashMap. Requires a function to pythonate
+-- keys, and a function to pythonate values (and, of course, the
+-- dictionary we want to pythonate). In the PythonM monad, not just IO
+-- (in other words we correctly handle exceptions, stopping what we're
+-- doing and discarding python objects we already constructed that now
+-- do not have an owner) the pythonation functions provided by the
+-- user must similarly be in the PythonM monad (so the functions above
+-- cannot be used without a treatingAsErr nullPtr).
+
 pythonateHDict :: (a -> PythonM PyObj) -> (b -> PythonM PyObj) -> HashMap a b
                   -> PythonM PyObj
 pythonateHDict = pythonateDictCore HashMap.toList
+
+-- | Build a Python tuple, givne a list of functions (in the PythonM
+-- monad) that build the elements of the tuple.
 
 pythonateTuple :: [PythonM PyObj] -> PythonM PyObj
 pythonateTuple list = do

@@ -213,10 +213,10 @@ splitConstraint ty = case GHCType.splitFunTy_maybe ty of
     Just (tyc, _) -> if tyc == GHCType.constraintKindTyCon
                      then (Just src, dest) else (Nothing, ty)
 
-createObj :: GhcMonad.Session -> PreObj -> PythonM Obj
+createObj :: GhcMonad.Session -> PreObj -> PythonM HsObj
 createObj sess (code, orig_type) = do
   memoTable <- lift $ newIORef HashMap.empty
-  let core :: HsType -> PythonM Obj
+  let core :: HsType -> PythonM HsObj
       core hst = do
         curMemoTable <- lift $ readIORef memoTable
         hobj <- case HashMap.lookup hst curMemoTable of
@@ -304,7 +304,7 @@ makePreModule im tyths = let
   in (HashMap.fromList objs, HashMap.fromList tynselts)
 
 createModule :: GhcMonad.Session -> (HashMap Text PreObj, HashMap Text TyNSElt) ->
-              PythonM (HashMap Text Obj, HashMap Text TyNSElt)
+              PythonM (HashMap Text HsObj, HashMap Text TyNSElt)
 createModule sess (preobjs, tynselts) = do
   objs <- Data.Traversable.mapM (createObj sess) preobjs
   return (objs, tynselts)
@@ -397,7 +397,7 @@ basicsByName = (
   [("tup" ++ show n ++ "tail", "\\ " ++ mkTupStr 1 n ++ " -> " ++ mkTupStr 2 n)
   | n<-[2..15]])
 
-accessBasics :: GhcMonad.Session -> PythonM (HashMap Text Obj)
+accessBasics :: GhcMonad.Session -> PythonM (HashMap Text HsObj)
 accessBasics sess = do
   let evalToPreObj :: (String, String) -> GhcMonad.Ghc (Maybe (Text, PreObj))
       evalToPreObj (name, expr) = do
@@ -411,7 +411,7 @@ accessBasics sess = do
   Data.Traversable.mapM (createObj sess) preobjs
 
 importLibModules :: GhcMonad.Session -> [Text] -> PythonM (
-  HashMap Text (HashMap Text Obj, HashMap Text TyNSElt))
+  HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))
 importLibModules sess names = do
   preModules <- performGHCOps Nothing sess $ do
     modContents        <- mapM readGHCModule names
@@ -426,7 +426,7 @@ importLibModules sess names = do
   return . HashMap.fromList $ zip names modules
 
 importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
-  HashMap Text (HashMap Text Obj, HashMap Text TyNSElt))
+  HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))
 importSrcModules sess paths = do
   srcModuleNames <- performGHCOps Nothing sess $ do
     GHC.setTargets [GHCHscTypes.Target {

@@ -15,6 +15,25 @@ import HyphenTyCon
 import HsType
 import HsObjRaw
 
+-- | A key element of the low-level haskell-python bridge is that it
+-- creates three important new Python types: TyCon, HsType and
+-- HsObjRaw. Each of these is a thin wrapper over a stableptr to a
+-- Haskell object (of types TyCon, HsType and HsObj respectively). It
+-- is useful to have functions from a Haskell TyCon to a PyObj (the
+-- Haskell type that represents a pointer to some Python object) which
+-- represents a (pointer to a) Python TyCon, and vice versa, and
+-- similarly for HsType and HsObjRaw. We define those functions here,
+-- using as a basis C functions which pull out the stableptr from a
+-- Python TyCon (or HsType, or HsObjRaw) and other C functions which
+-- build the wrapping Python TyCon (or HsType, or HsObjRaw) from the
+-- stableptr we want inside.
+
+-- | We also take the oppotunity to import a few related functions,
+-- which check that PyObjs are of type TyCon (or HsType, or HsObjRaw)
+-- and which take a Pyhton tuple and make sure that it is a singleton
+-- and its only element is a HsObjRaw (say), then pulling out the
+-- HsObjRaw (this is useful for parsing argument tuples...)
+
 foreign import ccall pyHsObjRaw_Check           :: PyObj -> IO Bool
 foreign import ccall pyHsType_Check             :: PyObj -> IO Bool
 foreign import ccall pyTyCon_Check              :: PyObj -> IO Bool
@@ -41,9 +60,9 @@ wrapPythonHsType   :: HsType  -> IO PyObj
 wrapPythonHsType   =  c_wrapPythonHsType . castStablePtrToPtr <=< newStablePtr
 
 foreign import ccall c_wrapPythonHsObjRaw  :: WStPtr -> IO PyObj
-wrapPythonHsObjRaw   :: Obj -> IO PyObj
+wrapPythonHsObjRaw   :: HsObj -> IO PyObj
 wrapPythonHsObjRaw = c_wrapPythonHsObjRaw . castStablePtrToPtr <=< newStablePtr
 
 foreign import ccall c_unwrapPythonHsObjRaw :: PyObj -> WStPtr
-unwrapPythonHsObjRaw :: PyObj -> IO Obj
+unwrapPythonHsObjRaw :: PyObj -> IO HsObj
 unwrapPythonHsObjRaw = deRefStablePtr . castPtrToStablePtr . c_unwrapPythonHsObjRaw

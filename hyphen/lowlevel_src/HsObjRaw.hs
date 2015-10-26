@@ -3,7 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module HsObjRaw (PolyObjCore(..), Obj(..), objType, formObjOfType, formObjSimple,
+module HsObjRaw (PolyObjCore(..), HsObj(..), objType, formObjOfType, formObjSimple,
                  transformObjTypes, transformObjTypes', resolveToType, alignTypes,
                  applyMono, apply, makeMonomorphic, tryMakeMonomorphic, doIO) where
 
@@ -30,43 +30,111 @@ import HsType
 import HyphenUnify
 import PythonBase
 
-data PolyObjCore = PolyObjCore {resolvePolyObjCoreToType :: HsType -> PythonM Obj}
+-- | This module defines the HsObj type, which in a run-time
+-- representation of a Haskell object of some (possibly polymorphic)
+-- type. It is different to Data.Dynamic mostly in that it supports a
+-- representation of polymorphic objects; it is also different in that
+-- it integrates with HsType (our preferred representation of Haskell
+-- types, which can represent polymorphic types and which stores more
+-- information about the type constructors therein contained) rather
+-- than the standard library representation of Haskell types (which
+-- cannot represent polymorphism, and which stores less information
+-- about type constructors, for example loosing information about
+-- their kinds).
+--
+-- When we say that we 'represent' polymorphic objects, this is a
+-- little misleading. We simply represent them in terms of how they
+-- can be built out of 'fundamental' polymorphic objects (names that
+-- can be imported from modules) using the fundamental operation of
+-- function application; for 'fundamental' polymorphic objects, we
+-- just store some code that can be passed to ghci to refer to the
+-- object in question, which allows us to generate code to pick up a
+-- monomorphic realization. For this reason, what we do is quite
+-- inefficient if you work at length with polymorphic objects; this is
+-- why the documentation for hyphen explains that for anything where
+-- efficiency matters, you should make all your objects monomorphic as
+-- early as possible.
+--
+-- A monomorphic HsObj is simple: it just consists of its monomorphic
+-- type and an Any which points to the object in question.  A
+-- Polymorphic object is more complicated. It consists of a *core*,
+-- which represents a 'fundamental' polymorphic object (i.e. one
+-- importable from somewhere) and which is itself concretely
+-- represented as an abstract function which takes an HsType (which
+-- had better be both monomorphic and a specialization of the
+-- polymorphic type of the underlying polymorphic HsObj) and returns
+-- an HsObj (a specialization of the Polymorphic HsObj to the given
+-- type) in the PythonM monad. (This, in turn, is internally
+-- implemented by using the 'stored piece of code' mentioned above.)
+-- In simple cases, the HsObj consists only of the core; in more
+-- complicated cases, there may be a sequence of other HsObjs that we
+-- need to function-apply the core to before we get the encoded
+-- object. We keep track of the type of the core and the type of the
+-- final HsObj.
+--
+-- Occasionally, we pass around HsObjs which claim to be polymorphic
+-- but whose type si monomorphic. These are allowed, but only as
+-- intermediates; the actual HsObjs that we wrap and expose as Python
+-- objects should never be like that...
 
-data Obj =
+data PolyObjCore = PolyObjCore {resolvePolyObjCoreToType :: HsType -> PythonM HsObj}
+
+data HsObj =
   MonoObj HsType Any
   | PolyObj {
     polyObjFinalType     :: HsType,
     polyObjCoreType      :: HsType,
     polyObjCore          :: PolyObjCore,
-    polyObjAppliedTo     :: [Obj]
+    polyObjAppliedTo     :: [HsObj]
     }
 
-debugDumpObj :: Obj -> Text
-debugDumpObj (MonoObj hst _) = bracket $ T.unwords [T.pack "MonoObj", typeName hst]
-debugDumpObj (PolyObj ft ct _ ato) = bracket $ T.unwords [
-  T.pack "PolyObj", bracket $ typeName ft, bracket $ typeName ct, T.concat (
-     T.pack "[" : intersperse (T.pack ", ") (map debugDumpObj ato) ++ [T.pack "]"])]
+-- | Debug representation of HsObjs
 
-objType :: Obj -> HsType
+debugDumpHsObj :: HsObj -> Text
+debugDumpHsObj (MonoObj hst _) = bracket $ T.unwords [T.pack "MonoObj", typeName hst]
+debugDumpHsObj (PolyObj ft ct _ ato) = bracket $ T.unwords [
+  T.pack "PolyObj", bracket $ typeName ft, bracket $ typeName ct, T.concat (
+     T.pack "[" : intersperse (T.pack ", ") (map debugDumpHsObj ato) ++ [T.pack "]"])]
+
+-- | Fetch the type of an HsObj
+
+objType :: HsObj -> HsType
 objType (MonoObj t _)                  = t
 objType (PolyObj {polyObjFinalType=t}) = t
 
-formObjOfType :: HsType -> a -> IO Obj
+-- | form an HsObj given the desired type; *takes on trust that it will
+-- be applied to something of the type specified; in other words, not
+-- type safe*!
+
+formObjOfType :: HsType -> a -> IO HsObj
 formObjOfType ty = return . MonoObj ty . Unsafe.Coerce.unsafeCoerce
 
-formObjSimple :: (Typeable a) => a -> IO Obj
+-- | form an HsObj; only correct if the type of the object in question
+-- is simple (a single type constructor of arity 0)
+
+formObjSimple :: (Typeable a) => a -> IO HsObj
 formObjSimple ob = formObjOfType (hsTypeFromSimpleTypeRep $ typeOf ob) ob
 
-transformObjTypes' :: Map Var HsType -> Obj -> Obj
+-- | Same as transformObjTypes below, but skip the final step (which
+-- is replacing a polymorphic representation with a monomorphic one if
+-- the type has become monomorphic).
+
+transformObjTypes' :: Map Var HsType -> HsObj -> HsObj
 transformObjTypes' d = go
   where go (PolyObj ft ct c ato) = PolyObj (f ft) (f ct) c (map go ato)
         go mo@(MonoObj _ _)      = mo
         f = transformType d
 
-transformObjTypes :: Map Var HsType -> Obj -> PythonM Obj
+-- | Specialize the type of an HsObj by substituting the given types for
+-- the type-variables it contains.
+
+transformObjTypes :: Map Var HsType -> HsObj -> PythonM HsObj
 transformObjTypes d = tryMakeMonomorphic . transformObjTypes' d
 
-resolveToType :: HsType -> Obj -> PythonM Obj
+-- | Resolve the HsObj given to the Type given; raises python TypeError
+-- if this is not possible.
+
+resolveToType :: HsType -> HsObj -> PythonM HsObj
 resolveToType ty obj = do
   let unify_result = unify [mapVars (T.append $ T.pack "o_") $ objType obj,
                             mapVars (T.append $ T.pack "r_") ty]
@@ -77,6 +145,10 @@ resolveToType ty obj = do
   let subst = Map.mapKeys (Var . T.drop 2 . getVar) . fst
               . Map.split (Var $ T.pack "q") $ substRaw
   transformObjTypes subst obj
+
+-- | The pseudo-variable '...', which, while it is only a
+-- pseudo-variable (it wouldn't be legal in Haskell) is useful in
+-- various operations below.
 
 ellipsisVar :: Var
 ellipsisVar = Var $ T.pack $ "..."
@@ -119,7 +191,14 @@ separateVarPrefix t  = case T.findIndex (=='_') (getVar t) of
   Nothing  -> (T.empty, t)
   Just pos -> second Var $ T.splitAt (pos+1) (getVar t)
 
-alignTypes :: (Obj, [Obj]) -> Either ErrMsg (Obj, [Obj], HsType)
+-- | Given an HsObj which we'd like to apply to a list of other HsObjs in
+-- turn, see if it's possible to specialize the types of all the HsObjs
+-- concerned to make the application type check. If so, return HsObjs
+-- with types suitably specialized (but without reducing them to
+-- monomorphic objs if their type has become monomorphic). Otherwise,
+-- return a friendly error message.
+
+alignTypes :: (HsObj, [HsObj]) -> Either ErrMsg (HsObj, [HsObj], HsType)
 alignTypes (o1, os) = do
   let (t1, ts) = (objType o1, map objType os)
   _                 <- breakFnType t1
@@ -162,6 +241,8 @@ alignTypes (o1, os) = do
 
 -------------
 
+-- Helper function, the 'real word' of applyMono
+
 applyMono' :: (HsType, Any) -> (HsType, Any) -> (HsType, Any)
 applyMono' (fn_type, ptr_fn) (arg_type, ptr_arg) =
   let (ty_fr, ty_to) = breakFnTypeUnsafe fn_type
@@ -170,12 +251,17 @@ applyMono' (fn_type, ptr_fn) (arg_type, ptr_arg) =
                      ++ "\ngot:\n\t" ++ T.unpack (typeName arg_type))
          else (ty_to, (Unsafe.Coerce.unsafeCoerce ptr_fn) ptr_arg)
 
-applyMono :: Obj -> Obj -> Obj
+-- | Apply a monomorphic object to another monomorphic object. Checks
+-- types. Barfs if the objects are, in fact, not monomorphic.
+
+applyMono :: HsObj -> HsObj -> HsObj
 applyMono (MonoObj ty1 obj1) (MonoObj ty2 obj2)
   = uncurry MonoObj $ applyMono' (ty1, obj1) (ty2, obj2)
 
+-- | Apply an HsObj to a sequence of other HsObjs. Return a result in the
+-- PythonM. Raise a nice Python TypeError if there's a type error.
 
-apply :: Obj -> [Obj] -> PythonM Obj
+apply :: HsObj -> [HsObj] -> PythonM HsObj
 apply fn_orig args_orig = do
   (fn, args, resultType) <- promoteErr $ alignTypes (fn_orig, args_orig)
   case fn of
@@ -186,7 +272,11 @@ apply fn_orig args_orig = do
       args'  <- mapM makeMonomorphicUnsafe args
       return $ foldl applyMono fn args'
 
-makeMonomorphic :: Obj -> PythonM (Maybe Obj)
+-- | Given an HsObj whose type is monomorphic (but which may itself be
+-- implemented, cheatingly, as a polymorphic obj), turn it into a real
+-- monomorphic HsObj if it wasn't one already; otherwise return Nothing.
+
+makeMonomorphic :: HsObj -> PythonM (Maybe HsObj)
 makeMonomorphic m@(MonoObj _ _) = return $ return m
 makeMonomorphic obj@(PolyObj {})
   | isMonoType (polyObjFinalType obj)
@@ -195,17 +285,27 @@ makeMonomorphic obj@(PolyObj {})
        return . Just $ foldl applyMono coreMono appliedToMono
 makeMonomorphic _ = return Nothing
 
+-- | Like makeMonomorphic, but barfs if it cannot make the HsObj monomorphic.
+
 makeMonomorphicUnsafe obj = do
   res <- makeMonomorphic obj
   case res of
     Just res' -> return res'
     Nothing   -> pyTypeErr' (
-      "makeMonomorphicUnsafe:not monomorphic: " ++ (T.unpack $ debugDumpObj obj))
+      "makeMonomorphicUnsafe:not monomorphic: " ++ (T.unpack $ debugDumpHsObj obj))
 
-tryMakeMonomorphic :: Obj -> PythonM Obj
+-- | Like makeMonomorphic, but returns the original Obj unchanged if
+-- it can't make it monomorphic.
+
+tryMakeMonomorphic :: HsObj -> PythonM HsObj
 tryMakeMonomorphic o = fromMaybe o <$> makeMonomorphic o
 
-doIO :: Obj -> Either ErrMsg (IO Obj)
+-- | Given an HsObj which we hope represents an IO action, return an IO
+-- action that does the represented action and returns another HsObj
+-- with the return value. If presented with an HsObj which doesn't
+-- represent an IO action, we produce a nice error message.
+
+doIO :: HsObj -> Either ErrMsg (IO HsObj)
 doIO (MonoObj ty ptr) = do
   unless (typeHead ty == Left ioTyCon) (
     report $ "Attempt to perform IO action, but instead of an action an object " ++
