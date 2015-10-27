@@ -218,6 +218,9 @@ setupHaskellCtrlCHandler = do
               Just tid -> Exception.throwTo tid (toException UserInterrupt)
   System.Posix.Signals.installHandler System.Posix.Signals.sigINT handler Nothing
   return ()
+#else
+catchingCtrlC :: IO a -> IO a
+catchingCtrlC = id
 #endif
 
 ------------------------------
@@ -230,6 +233,20 @@ acquiringGIL = Exception.bracket pyGILState_Ensure' pyGILState_Release . const
   where pyGILState_Ensure' = do st <- pyGILState_Ensure
                                 if (st == nullPtr) then Exception.throwIO HeapOverflow
                                   else return st
+
+------------------------------
+
+data GILRule    = GILRuleLazy    | GILRuleFancy                          deriving Enum
+data SignalRule = SignalRuleLazy | SignalRuleHaskell | SignalRulePython  deriving Enum
+
+protectLongRunningOperation :: GILRule -> SignalRule -> IO a -> IO a
+protectLongRunningOperation gilRule sigRule
+  = gilProtection gilRule . sigConversion sigRule
+  where gilProtection GILRuleLazy       = id
+        gilProtection GILRuleFancy      = releasingGIL
+        sigConversion SignalRuleLazy    = id
+        sigConversion SignalRuleHaskell = catchingCtrlC
+        sigConversion SignalRulePython  = servicingPySignalHandlers
 
 ------------------------------
 
@@ -502,54 +519,56 @@ addSimpleHsTypeObjsToModule module_ = liftM (fromMaybe (-1)) . runMaybeT $ do
   return 0
 
 withHsObjRawOfType :: (NFData a) =>
-                      HsType -> (a -> IO PyObj) -> PyObj -> PyObj -> IO PyObj
-withHsObjRawOfType ty f _ pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
-  pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
-  obj   <- lift $ unwrapPythonHsObjRaw pyobj
-  let processObj obj = do releasingGIL (obj `deepseq` return ())
-                          f obj
-  translatingHsExcepts  $ case obj of
-    MonoObj ty' ptr ->
-      if ty == ty'
-      then (treatingAsErr nullPyObj . processObj $ Unsafe.Coerce.unsafeCoerce ptr)
-      else pyTypeErr' $ "Expected type " ++ T.unpack (typeName ty)
-        ++ "; got " ++ T.unpack (typeName ty')
-    _ ->   pyTypeErr' $ "Only monomorphic objects supported."
+                      HsType -> (a -> IO PyObj) -> Int -> Int -> PyObj -> IO PyObj
+withHsObjRawOfType ty f gilCode sigCode pyargtuple
+  = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+      pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
+      obj   <- lift $ unwrapPythonHsObjRaw pyobj
+      let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
+          processObj obj = do protectLro (obj `deepseq` return ())
+                              f obj
+      translatingHsExcepts  $ case obj of
+        MonoObj ty' ptr ->
+          if ty == ty'
+          then (treatingAsErr nullPyObj . processObj $ Unsafe.Coerce.unsafeCoerce ptr)
+          else pyTypeErr' $ "Expected type " ++ T.unpack (typeName ty)
+            ++ "; got " ++ T.unpack (typeName ty')
+        _ ->   pyTypeErr' $ "Only monomorphic objects supported."
 
 
 withHsObjRawSimp :: (Typeable a, NFData a) =>
-                    (a -> IO PyObj) -> PyObj -> PyObj -> IO PyObj
+                    (a -> IO PyObj) -> Int -> Int -> PyObj -> IO PyObj
 withHsObjRawSimp fn = let
   typeConstrainer :: (a -> b) -> a
   typeConstrainer = const undefined
   in withHsObjRawOfType (hsTypeFromSimpleTypeRep $ typeOf $ typeConstrainer fn) fn
 
-foreign export ccall from_haskell_Bool        :: PyObj -> PyObj -> IO PyObj
-from_haskell_Bool        = withHsObjRawSimp pythonateBool
+foreign export ccall from_haskell_Bool_impl       :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Bool_impl        = withHsObjRawSimp pythonateBool
 
-foreign export ccall from_haskell_Char        :: PyObj -> PyObj -> IO PyObj
-from_haskell_Char        = withHsObjRawSimp pythonateChar
+foreign export ccall from_haskell_Char_impl       :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Char_impl        = withHsObjRawSimp pythonateChar
 
-foreign export ccall from_haskell_String      :: PyObj -> PyObj -> IO PyObj
-from_haskell_String      = withHsObjRawSimp pythonateString
+foreign export ccall from_haskell_String_impl     :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_String_impl      = withHsObjRawSimp pythonateString
 
-foreign export ccall  from_haskell_Text       :: PyObj -> PyObj -> IO PyObj
-from_haskell_Text        = withHsObjRawSimp pythonateText
+foreign export ccall  from_haskell_Text_impl      :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Text_impl        = withHsObjRawSimp pythonateText
 
-foreign export ccall from_haskell_ByteString  :: PyObj -> PyObj -> IO PyObj
-from_haskell_ByteString  = withHsObjRawSimp pythonateByteString
+foreign export ccall from_haskell_ByteString_impl :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_ByteString_impl  = withHsObjRawSimp pythonateByteString
 
-foreign export ccall from_haskell_Int         :: PyObj -> PyObj -> IO PyObj
-from_haskell_Int         = withHsObjRawSimp pythonateInt
+foreign export ccall from_haskell_Int_impl        :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Int_impl         = withHsObjRawSimp pythonateInt
 
-foreign export ccall from_haskell_Integer     :: PyObj -> PyObj -> IO PyObj
-from_haskell_Integer     = withHsObjRawSimp pythonateInteger
+foreign export ccall from_haskell_Integer_impl    :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Integer_impl     = withHsObjRawSimp pythonateInteger
 
-foreign export ccall from_haskell_Float       :: PyObj -> PyObj -> IO PyObj
-from_haskell_Float       = withHsObjRawSimp pythonateFloat
+foreign export ccall from_haskell_Float_impl      :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Float_impl       = withHsObjRawSimp pythonateFloat
 
-foreign export ccall from_haskell_Double      :: PyObj -> PyObj -> IO PyObj
-from_haskell_Double      = withHsObjRawSimp pythonateDouble
+foreign export ccall from_haskell_Double_impl     :: Int -> Int -> PyObj -> IO PyObj
+from_haskell_Double_impl      = withHsObjRawSimp pythonateDouble
 
 foreign export ccall buildHaskellBool       :: Bool   -> IO PyObj
 buildHaskellBool       = formSimpleHsObjRaw
@@ -647,7 +666,33 @@ hyphen_access_basics_core stableSessionPtr pyargsTuple =
     pythonateHDict (treatingAsErr nullPyObj . pythonateText)
       (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs
 
-foreign export ccall ok_python_identif      :: PyObj -> PyObj -> IO PyObj
+foreign export ccall get_GIL_mode_lazy          :: IO Int
+get_GIL_mode_lazy       = return $ fromEnum GILRuleLazy
+
+foreign export ccall get_GIL_mode_fancy         :: IO Int
+get_GIL_mode_fancy      = return $ fromEnum GILRuleFancy
+
+foreign export ccall stringify_GIL_mode         :: Int -> IO PyObj
+stringify_GIL_mode      = pythonateString . displayFn . toEnum
+  where displayFn GILRuleLazy  = "lazy"
+        displayFn GILRuleFancy = "fancy"
+
+foreign export ccall get_signal_mode_lazy    :: IO Int
+get_signal_mode_lazy    = return $ fromEnum SignalRuleLazy
+
+foreign export ccall get_signal_mode_haskell :: IO Int
+get_signal_mode_haskell = return $ fromEnum SignalRuleHaskell
+
+foreign export ccall get_signal_mode_python  :: IO Int
+get_signal_mode_python  = return $ fromEnum SignalRulePython
+
+foreign export ccall stringify_signal_mode   :: Int -> IO PyObj
+stringify_signal_mode   = pythonateString . displayFn . toEnum
+  where displayFn SignalRuleLazy    = "lazy"
+        displayFn SignalRuleHaskell = "haskell"
+        displayFn SignalRulePython  = "python"
+
+foreign export ccall ok_python_identif          :: PyObj -> PyObj -> IO PyObj
 ok_python_identif _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size pyargs
   check (nArgs == 1) $ "hyphen.ok_python_identif: expected exactly 1 argument."
@@ -656,7 +701,7 @@ ok_python_identif _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   check ok $ "hyphen.ok_python_identif: expected string as parameter."
   treatingAsErr nullPyObj . pythonateBool . okPythonIdentif =<< textFromPythonObj pyobj
 
-foreign export ccall hyphen_apply           :: PyObj -> PyObj -> IO PyObj
+foreign export ccall hyphen_apply               :: PyObj -> PyObj -> IO PyObj
 hyphen_apply _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size pyargs
   check (nArgs > 1 ) $ "hyphen.apply: must have at least 2 arguments."
@@ -675,15 +720,16 @@ hyphen_apply _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   obj' <- translatingHsExcepts  $ apply fnToApply trueArgsList
   lift $ wrapPythonHsObjRaw obj'
 
-foreign export ccall hyphen_doio            :: PyObj -> PyObj -> IO PyObj
-hyphen_doio _ pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+foreign export ccall hyphen_doio_impl           :: Int -> Int -> PyObj -> IO PyObj
+hyphen_doio_impl gilCode sigCode pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
   obj   <- lift $ unwrapPythonHsObjRaw pyobj
   act   <- promoteErr $ doIO obj
-  obj'  <- translatingHsExcepts . lift . releasingGIL $ act
+  let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
+  obj'  <- translatingHsExcepts . lift . protectLro $ act
   lift $ wrapPythonHsObjRaw obj'
 
-foreign export ccall hyphen_wrap_pyfn_impl   :: PyObj -> PyObj -> Int -> IO PyObj
+foreign export ccall hyphen_wrap_pyfn_impl      :: PyObj -> PyObj -> Int -> IO PyObj
 hyphen_wrap_pyfn_impl fn tyPyo arityReq = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   checkM (pyCallable_Check fn) "wrap_pyfn(): first parameter must be callable"
   ty <- lift $ unwrapPythonHsType tyPyo

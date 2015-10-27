@@ -10,9 +10,15 @@ extern void __stginit_Hyphen ( void );
 #include "structmember.h"
 
 
-static PyObject *HsException;
-static HsPtr ghc_interpreter_state = 0;
-static HsBool ghc_srcmodules_loaded = 0;
+static PyObject         *HsException;
+static HsPtr             ghc_interpreter_state = 0;
+static HsBool            ghc_srcmodules_loaded = 0;
+static int               gil_mode_selection    = 1;
+static int               sig_mode_selection    = 1;
+static PyOS_sighandler_t haskell_siginthandler = 0;
+static PyOS_sighandler_t python_siginthandler  = 0;
+static volatile int      signal_count          = 0;
+
 
 /*********************************************************************
  *  We first have a large number of functions that just wrap Python
@@ -394,10 +400,6 @@ pyGILState_Release(HsPtr state)
    give Haskell a chance to service the signal. Which it will not do
    automatically. */
 
-static PyOS_sighandler_t haskell_siginthandler = 0;
-static PyOS_sighandler_t python_siginthandler  = 0;
-static volatile int      signal_count          = 0;
-
 static void
 compound_sigint_handler(int signum)
 { /* Our private version of the Haskell signal handler */
@@ -583,6 +585,8 @@ c_wrapPythonTyCon(HsPtr stablePtr)
   return (PyObject *)self;
 }
 
+/* Is this a Python TyCon object? */
+
 HsBool
 pyTyCon_Check(HsPtr obj)
 {
@@ -752,6 +756,8 @@ parseTupleToPythonHsType(HsPtr args)
   return obj;
 }
 
+/* Is this a Python HsType object? */
+
 HsBool
 pyHsType_Check(HsPtr obj)
 {
@@ -907,6 +913,8 @@ parseTupleToPythonHsObjRaw(HsPtr args)
   return obj;
 }
 
+/* Is this a Python HsObjRaw object? */
+
 HsBool
 pyHsObjRaw_Check(HsPtr obj)
 {
@@ -926,6 +934,66 @@ hyphen_wrap_pyfn(PyObject *self, PyObject *args)
     return NULL;
 
   return hyphen_wrap_pyfn_impl(fn, ty, arity);
+}
+
+static PyObject *
+hyphen_doio(PyObject *self, PyObject *args)
+{
+  hyphen_doio_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Bool(PyObject *self, PyObject *args)
+{
+  from_haskell_Bool_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Char(PyObject *self, PyObject *args)
+{
+  from_haskell_Char_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_String(PyObject *self, PyObject *args)
+{
+  from_haskell_String_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Text(PyObject *self, PyObject *args)
+{
+  from_haskell_Text_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_ByteString(PyObject *self, PyObject *args)
+{
+  from_haskell_ByteString_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Int(PyObject *self, PyObject *args)
+{
+  from_haskell_Int_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Integer(PyObject *self, PyObject *args)
+{
+  from_haskell_Integer_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Float(PyObject *self, PyObject *args)
+{
+  from_haskell_Float_impl(gil_mode_selection, sig_mode_selection, args);
+}
+
+static PyObject *
+from_haskell_Double(PyObject *self, PyObject *args)
+{
+  from_haskell_Double_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
@@ -1109,6 +1177,53 @@ hyphen_import_src(PyObject *self, PyObject *args)
     }
 }
 
+static PyObject *
+set_GIL_mode_lazy(PyObject *self, PyObject *args)
+{
+  gil_mode_selection = get_GIL_mode_lazy();
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+set_GIL_mode_fancy(PyObject *self, PyObject *args)
+{
+  gil_mode_selection = get_GIL_mode_fancy();
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+get_GIL_mode(PyObject *self, PyObject *args)
+{
+  return stringify_GIL_mode(gil_mode_selection);
+}
+
+static PyObject *
+set_signal_mode_lazy(PyObject *self, PyObject *args)
+{
+  sig_mode_selection = get_signal_mode_lazy();
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+set_signal_mode_haskell(PyObject *self, PyObject *args)
+{
+  sig_mode_selection = get_signal_mode_haskell();
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+set_signal_mode_python(PyObject *self, PyObject *args)
+{
+  sig_mode_selection = get_signal_mode_python();
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+get_signal_mode(PyObject *self, PyObject *args)
+{
+  return stringify_signal_mode(sig_mode_selection);
+}
+
 /* --------------------------------------------------------------------- */
 
 /* List of functions defined in the module */
@@ -1142,6 +1257,13 @@ static PyMethodDef HyphenMethods[] = {
     {"to_haskell_Integer",      (PyCFunction)to_haskell_Integer,      METH_VARARGS, PyDoc_STR("Convert from python to Haskell Integer.")},
     {"to_haskell_Float",        (PyCFunction)to_haskell_Float,        METH_VARARGS, PyDoc_STR("Convert from python to Haskell Float.")},
     {"to_haskell_Double",       (PyCFunction)to_haskell_Double,       METH_VARARGS, PyDoc_STR("Convert from python to Haskell Double.")},
+    {"set_GIL_mode_lazy",       (PyCFunction)set_GIL_mode_lazy,       METH_NOARGS,  PyDoc_STR("Set the lazy GIL mode (GIL not released during Haskell computation).")},
+    {"set_GIL_mode_fancy",      (PyCFunction)set_GIL_mode_fancy,      METH_NOARGS,  PyDoc_STR("Set the fancy GIL mode (GIL released during Haskell computation).")},
+    {"get_GIL_mode",            (PyCFunction)get_GIL_mode,            METH_NOARGS,  PyDoc_STR("Read the GIL mode.")},
+    {"set_signal_mode_lazy",    (PyCFunction)set_signal_mode_lazy,    METH_NOARGS,  PyDoc_STR("Set the lazy signal mode (signals not checked during Haskell computation).")},
+    {"set_signal_mode_python",  (PyCFunction)set_signal_mode_python,  METH_NOARGS,  PyDoc_STR("Set the python signal mode (signals checked by Python during Haskell computation).")},
+    {"set_signal_mode_haskell", (PyCFunction)set_signal_mode_haskell, METH_NOARGS,  PyDoc_STR("Set the haskell signal-handling mode (signals checked by Haskell during Haskell computation).")},
+    {"get_signal_mode",         (PyCFunction)get_signal_mode,         METH_NOARGS,  PyDoc_STR("Read the signal-handling mode.")},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
