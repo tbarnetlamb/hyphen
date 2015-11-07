@@ -127,11 +127,12 @@ The importing functions
 There are three very important functions defined in hslowlevel which
 allow you to import modules from Haskell.
 
-### The `hslowlevel.import_lib` function ### One calls
-`hslowlevel.import_lib(module_name1, module_name2, ...)` to import
-modules form library packages visible to `hs_pkg`. The return is a
-dictionary, mapping module names to module contents. The keys will
-match the set of module names provided as arguments to
+### The `hslowlevel.import_lib` function ###
+
+One calls `hslowlevel.import_lib(module_name1, module_name2, ...)` to
+import modules form library packages visible to `hs_pkg`. The return
+is a dictionary, mapping module names to module contents. The keys
+will match the set of module names provided as arguments to
 `import_lib`. The 'module contents' assosciated to a given key will be
 a pair (`object_namespace`, `type_namespace`). `object_namespace` will
 be a dictionary mapping strings (names of things in the object
@@ -157,12 +158,13 @@ the 'co-data constructor' to something that was constructed using a
 different Data constructor for the same type, we get back an empty
 list.)
 
-### The `hslowlevel.import_src` function ### One calls
-`hslowlevel.import_src(source_path1, source_path2, ...)` to compile
-and import Haskell source. The return is exactly the same as for
-`import_lib`, although you should note that the keys in the dictionary
-returned will again be the names of the modules (as with `import_lib`,
-not the source paths that those modules came from).
+### The `hslowlevel.import_src` function ###
+
+One calls `hslowlevel.import_src(source_path1, source_path2, ...)` to
+compile and import Haskell source. The return is exactly the same as
+for `import_lib`, although you should note that the keys in the
+dictionary returned will again be the names of the modules (as with
+`import_lib`, not the source paths that those modules came from).
 
 Note that you can only call this function once. (Reason: if we didn't
 have this rule, Haskell will recompile the source if it has changed,

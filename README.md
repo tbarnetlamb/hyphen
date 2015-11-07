@@ -70,7 +70,7 @@ function. For instance
 	>>> hs.Prelude.drop(5, "Hello, world")
 	", world"
 
-In these two cases, the return value has been marshalled back from
+In these three cases, the return value has been marshalled back from
 Haskell to Python. Our philosophy is to aggressively try to marshall
 parameters *to* Haskell types, but only to convert the very simplest
 types (String, Text, Int, Integer, Float, Complex) *back* to Python
@@ -195,7 +195,7 @@ Then the python example could have continued
 More detail about marshalling to Haskell
 ----------------------------------------
 
-We have already seen some exmaples of how objects are marshalled from
+We have already seen some examples of how objects are marshalled from
 Haskell to Python. A key point about this process is that a single
 Python object could be used to construct Haskell objects of various
 different types, depending on type expected by the Haskell function
@@ -481,7 +481,7 @@ constructor.)
 The difference between Python types and Haskell types
 -----------------------------------------------------
 
-WE've just described how hyphen creates python types to represent
+We've just described how hyphen creates python types to represent
 Haskell type constructors and data constructors. *Every* Haskell
 object viewed from python via hyphen will be given a python type using
 these types.  (Exception: if the type constructor is invisible because

@@ -331,7 +331,7 @@ hsTypeRepr hst
              [T.concat [T.pack "kind=\"", T.pack . kindString $ typeKind hst, T.pack "\""]]
            else []), T.pack ")"]
       Left   tyc     -> T.concat $ [
-        tyConRepr tyc, T.pack "(", T.intercalate (T.pack ", ") tailRep, T.pack ")"]
+        tyConRepr' True tyc, T.pack "(", T.intercalate (T.pack ", ") tailRep, T.pack ")"]
 
 -- | A very technical but very important role in hyphen is played by
 -- *type forcers*, which exist only for *monomorphic* types. The idea

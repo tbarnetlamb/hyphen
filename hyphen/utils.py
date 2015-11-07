@@ -175,7 +175,7 @@ def datacon_tycon(dc):
     type constructor X.
 
     >>> repr(datacon_tycon(hs_Nothing)).replace('GHC.Base', 'Data.Maybe')
-    'hs.Data.Maybe.Maybe'
+    'hs.Data.Maybe.Maybe.hs_tycon'
 
     (Test written in a funny way because Data.Maybe.Maybe moved to GHC.Base, and
     we want a test that passes on both versions)

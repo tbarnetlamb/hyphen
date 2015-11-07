@@ -112,13 +112,15 @@ tyConFullName tc = T.concat [tyConModule tc, T.pack ".", tyConName tc]
 -- high-level haskell/python bridge, so there's a bit of something
 -- like leaky abstraction here...
 
-tyConRepr     :: TyCon -> Text
-tyConRepr     tc@(TyCon {tyConLocation=InExplicitModuleNamed mname})
+tyConRepr'     :: Bool -> TyCon -> Text
+tyConRepr'     abbrev tc@(TyCon {tyConLocation=InExplicitModuleNamed mname})
   = let name  = tyConName tc
         ok    = name /= (T.pack "_") && okPythonIdentif name
         adjN  = if ok then name else T.concat [T.pack "_['", name, T.pack "']"]
-    in T.concat [T.pack "hs.", mname, T.pack ".", adjN, T.pack ".hs_tycon"]
-tyConRepr     tc@(TyCon {tyConLocation=ivloc@(ImplicitlyVia {})})
+    in if abbrev 
+       then T.concat [T.pack "hs.", mname, T.pack ".", adjN]
+       else T.concat [T.pack "hs.", mname, T.pack ".", adjN, T.pack ".hs_tycon"]
+tyConRepr'     _ tc@(TyCon {tyConLocation=ivloc@(ImplicitlyVia {})})
   = let transformLocPath :: [Int] -> [Text]
         transformLocPath []      = [T.pack ".head_ll"]
         transformLocPath (i0:is)
@@ -130,6 +132,9 @@ tyConRepr     tc@(TyCon {tyConLocation=ivloc@(ImplicitlyVia {})})
       True  -> T.concat (
         T.pack "hs." : implicitTycLocFullName ivloc : T.pack ".hstype" :
         transformLocPath (implicitTycLocPath ivloc))
+
+tyConRepr :: TyCon -> Text
+tyConRepr = tyConRepr' False
 
 -- | Get the arity of a tycon
 
