@@ -302,8 +302,9 @@ peelArgTypes ty max_peel
 
 -- | Create an HsType from a TypeRep, in a way which only works in the
 -- special case that all the Type Constructors used in the TypeRep are
--- of Kind @*@. (In other words when the type is a single type
--- constructor.) Do not call outside this case!
+-- fully saturated. (That is, every argument passed to a type
+-- constructor has kind *, and the final result has kind *.) Do not
+-- call outside this case!
 
 hsTypeFromSimpleTypeRep :: TypeRep -> HsType
 hsTypeFromSimpleTypeRep tr = let

@@ -55,14 +55,17 @@ import HsType
 import HsObjRaw
 import HyphenExceptions
 
+-- initGHCMonad, as defined in the GHC API, annoyingly sets several
+-- totally inappropriate signal handlers, which will completely mess
+-- with Python's signal handlers. So we have to have our own
+-- version. This function, alas, must be kept in sync with the GHC
+-- version of which it is mostly a clone
+
+-- | Like initGHCMonad, as defined in the GHC API: but don't set
+-- signal handlers.
 
 ourInitGhcMonad :: (GHC.GhcMonad m) => Maybe FilePath -> m ()
 ourInitGhcMonad mb_top_dir = do
-  -- initGHCMonad, as defined in the GHC API, annoyingly sets several
-  -- totally inappropriate signal handlers, which will completely mess
-  -- with Python's signal handlers. So we have to have our own
-  -- version. This function, alas, must be kept in sync with the GHC
-  -- version of which it is mostly a clone
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
 
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
@@ -71,10 +74,29 @@ ourInitGhcMonad mb_top_dir = do
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv dflags
   GHC.setSession env
 
+-- | The essential function of the following function is to take a
+-- action in the GhcMonad.Ghc monad and turn it into an action in the
+-- PythonM monad. It takes the appropriate actions to ensure that GHC
+-- Errors turn into Haskell exceptions, and that those Haskell
+-- exceptions (in turn) turn into nice Python exceptions, as indeed do
+-- any other Haskell exceptions we raise. We optionally take a string
+-- that can be used to provide some context to Ghc errors, should they
+-- end up needing to be propagated out. We also take a
+-- GhcMonad.Session, because to do any GhcMonad.Ghc you need a session
+-- in place.
+
 performGHCOps  :: (Maybe String) -> GhcMonad.Session -> GhcMonad.Ghc a -> PythonM a
 performGHCOps msgHint sess ghcAct = promoteErr =<< (
   translatingHsExcepts . lift $ flip GhcMonad.reflectGhc sess
   $ reportingGHCErrors msgHint ghcAct)
+
+-- | Various incantations need to be performed to get nice error
+-- messages from Ghc operations. The following function does those
+-- incantations, and turns a @GhcMonad.Ghc a@ action into a modified
+-- action that returns @Either ErrMsg a@. We take an optional String
+-- which will be used to annotate error messages if they arise. (It
+-- can be helpful to have some context when dealing with certain Ghc
+-- errors...!)
 
 reportingGHCErrors :: (Maybe String) -> GhcMonad.Ghc a -> GhcMonad.Ghc (Either ErrMsg a)
 reportingGHCErrors msgHint action = do
@@ -109,6 +131,10 @@ reportingGHCErrors msgHint action = do
                locMsg = GHCErrUtils.mkLocMessage severity srcSpan msg
                printDoc = show (GHCOutputable.runSDoc locMsg cntx)
 
+-- | Make a new GHC session and bring the Prelude into scope. This
+-- function translates any errors that arise into nice Python
+-- exceptions, and is in PythonM for that reason.
+
 createGHCSession :: PythonM GhcMonad.Session
 createGHCSession = do
   ref <- lift $ newIORef (error "Empty session")
@@ -119,6 +145,13 @@ createGHCSession = do
     ensureModulesInContext $ Set.fromList [T.pack "Prelude"])
   return session
 
+-- | Convert a GHC.Kind into one of our Kinds. This isn't guaranteed
+-- to work (so is wrapped in Maybe monad) because there are some Kinds
+-- known to GHC that are not part of general standard Haskell (unboxed
+-- types and so on) and so not supported by our Kind
+-- datatype. (Functions whose types have Kinds that are nonstandard in
+-- this way will simply not be visible through hyphen.)
+
 unpackGHCKind :: GHC.Kind -> Maybe Kind
 unpackGHCKind k
   | GHCType.isFunTy k   = do (Kind ks') <- unpackGHCKind $ GHCType.funResultTy k
@@ -126,14 +159,60 @@ unpackGHCKind k
   | otherwise           = do (kcon, _) <- GHCType.splitTyConApp_maybe k
                              guard (kcon == GHCType.liftedTypeKindTyCon) >> (Just $ Kind [])
 
-type PreObj    = (Text, HsType)
-type TyNSElt   = Either TyCon HsType
-data PreTycLoc = PreTycLoc Text Bool [Int]
+-- The basic process of importing Haskell names splits into three
+-- steps. In the first step, we invoke GHCI to read the module and we
+-- get it's contents in a GHCI-y format: as a bunch of TyThings. This
+-- is not pure; it takes place in teh Ghc monad. The second step
+-- consists of converting these into 'PreObjs' and 'TyNSElts'
+-- (representing things in the object and type namespace
+-- respectively). This second step is pure. It basically consists of
+-- discarding everything that GHCI knows about the TyThing that we
+-- *don't* need to know. The third step, in the PythonM monad (and
+-- needs access to the GHCI session), consists of turning those
+-- PreObjs into HsObjs (the TyNSElts are already in a usable state.
 
-finalizePreTycLoc :: Int -> PreTycLoc -> Maybe TyCLocation
-finalizePreTycLoc i (PreTycLoc n ivt locs)
-  | n /= T.pack "" = Just $ ImplicitlyVia n ivt (reverse $ i:locs)
-  | otherwise      = Nothing
+-- | A PreObj represents an object in the data namespace. It's simply
+-- a pair (fully qualifie name, type)
+
+type PreObj    = (Text, HsType)
+
+-- | A TyNSElt represents an object in the type namespace; it's simply
+-- Either TyCon HsType, where a TyCon is what you might expect and an
+-- HsType represents a type synonym/typedef (with the free variables
+-- of the HsType corresponding to the parameters of the typedef).
+
+type TyNSElt   = Either TyCon HsType
+
+--------------------------
+
+-- | Given the (fully qualified) name of a module, get GHC to read it
+-- and tell us what is in it (as a list of @GHC.TyThing@
+-- objects). This is done in the GHC monad. This is the first step of
+-- reading a module.
+
+readGHCModule :: Text -> GhcMonad.Ghc [GHC.TyThing]
+readGHCModule name = do
+  mod        <- GHC.findModule (GHC.mkModuleName $ T.unpack name) Nothing
+  mi         <- GHC.getModuleInfo mod
+#if __GLASGOW_HASKELL__ >= 708
+  infos      <- mapM (GHC.getInfo False) $ maybe [] GHC.modInfoExports mi
+  return [a |  Just (a, _, _, _) <- infos]
+#else
+  infos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
+  return [a |  Just (a, _, _) <- infos]
+#endif
+
+-----------------------------
+
+-- The following functions handle the second stage of importing a
+-- module: converting TyThings into PreObjs and TyNSElts
+
+-- | Convert a Data constructor into a TyCon, if we can. (We can't if,
+-- say, it uses unboxed types or something like that.) We usually
+-- assume that the TyCon can be imported from which it is defined; if
+-- that is not true and it should be imported/accessed from elsewhere,
+-- information to that effect should be provided in the form of a
+-- Maybe TyCLocation.
 
 transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe TyCon
 transformGHCTyc loc tyc = do
@@ -149,6 +228,11 @@ transformGHCTyc loc tyc = do
       loc'    = fromMaybe (InExplicitModuleNamed mname) loc
   kind <- unpackGHCKind $ GHCTyCon.tyConKind tyc
   return $ mkTyCon pckg mname oname loc' kind (GHC.isClassTyCon tyc)
+
+-- | Convert something from the Type Construct namepspace into a
+-- (name, TyNSElt) pair. We need to know the module it was imported
+-- from. We might fail to convert if (say) the kind of a type alias is
+-- too complicated for us. (e.g. involves unboxed types).
 
 transformGHCTyNSElt :: Text -> GHC.TyCon -> Maybe (Text, TyNSElt)
 transformGHCTyNSElt import_module tyc = let
@@ -170,13 +254,47 @@ transformGHCTyNSElt import_module tyc = let
                   hst          <- transformGHCType fullname True expansion
                   return (oname, Right $ transformType substMap hst)
 
+
+-- | When we transform Ghc types into HsTypes, we need to annotate
+-- every TyCon that gets mentioned in the output with a way of
+-- importing it. This we do by keeping track of how one could have
+-- imported/accessed the type of the original HsType being converted,
+-- and then memorizing how to traverse the parse tree of that type to
+-- get down to the TyCon in question. We keep track of this
+-- information, as we go along, in the form of a PreTycLoc. The 'Text'
+-- is the fully qualified name of some type constructor or object
+-- constructor that implicates the original HsType we're trying to
+-- convert. The Bool records whether it is a type constructor or an
+-- object constructor. The [Int] tells us how to traverse the parse
+-- tree.
+-- 
+-- Note that the 'ways of importing' we construct at this stage might
+-- be superseded by 'better ways' down the line (basically, if the
+-- TyCon itself can be easily imported form somewhere); see
+-- canonicalizePreModuleTycs below.
+
+data PreTycLoc = PreTycLoc Text Bool [Int]
+
+-- | Convert a PreTycLoc, and an Int which tells us a final move we
+-- need to take in our traversal of the patse tree, make a
+-- TyCLocation.
+
+finalizePreTycLoc :: Int -> PreTycLoc -> Maybe TyCLocation
+finalizePreTycLoc i (PreTycLoc n ivt locs)
+  | n /= T.pack "" = Just $ ImplicitlyVia n ivt (reverse $ i:locs)
+  | otherwise      = Nothing
+
+-- | Transform a GHC.Type into an HsType, or fail if it's kind is too
+-- complicated (say, if it involves the kind of unboxed types). We
+-- need to know where we can import/access the original type being
+-- converted (so that we will know how to access the TyCons
+-- therein). This is provided as a Text (fully qualified name of some
+-- type constructor or object constructor that has or is this type)
+-- and an Int (to let us know whether the name is a name of a type
+-- constructor or object constructor).
+
 transformGHCType :: Text -> Bool -> GHC.Type -> Maybe HsType
 transformGHCType n ivt = transformGHCType' (PreTycLoc n ivt []). GHCType.expandTypeSynonyms
-
-transformGHCTypes :: PreTycLoc -> [GHC.Type] -> Maybe [HsType]
-transformGHCTypes (PreTycLoc mn on sf) tys = let
-  subLocs = map ((PreTycLoc mn on) . (:sf)) [0..]
-  in sequence . reverse $ zipWith transformGHCType' subLocs (reverse tys)
 
 transformGHCType' :: PreTycLoc -> GHC.Type -> Maybe HsType
 transformGHCType' locSoFar typ
@@ -198,12 +316,27 @@ transformGHCType' locSoFar typ
               return $ mkHsType (Right tyv') args'
             Nothing         -> Nothing
 
+-- | Utility function, used in the recursion of transformGHCType' to
+-- construct HsType objects corresponding to all the child nodes of
+-- the parse tree of some GHC.Type.
+
+transformGHCTypes :: PreTycLoc -> [GHC.Type] -> Maybe [HsType]
+transformGHCTypes (PreTycLoc mn on sf) tys = let
+  subLocs = map ((PreTycLoc mn on) . (:sf)) [0..]
+  in sequence . reverse $ zipWith transformGHCType' subLocs (reverse tys)
+
+-- | Convert a @GHC.TyVar@ to a @(Var, Kind)@ (our preferred
+-- representation of a TyVar). Will fail, returning @Nothing@, if the
+-- @Kind@ is too complicated (e.g. if it involves the kind of unboxed
+-- types).
 
 transformGHCTyVar :: GHC.TyVar -> Maybe (Var, Kind)
 transformGHCTyVar tyv = do
   k     <- unpackGHCKind $ GHCVar.tyVarKind tyv
   let n  = Var . T.pack . GHCOccName.occNameString . GHC.getOccName $ GHCVar.tyVarName tyv
   return (n, k)
+
+-- | Split constraints off of a GHC Type.
 
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
@@ -213,26 +346,8 @@ splitConstraint ty = case GHCType.splitFunTy_maybe ty of
     Just (tyc, _) -> if tyc == GHCType.constraintKindTyCon
                      then (Just src, dest) else (Nothing, ty)
 
-createObj :: GhcMonad.Session -> PreObj -> PythonM HsObj
-createObj sess (code, orig_type) = do
-  memoTable <- lift $ newIORef HashMap.empty
-  let core :: HsType -> PythonM HsObj
-      core hst = do
-        curMemoTable <- lift $ readIORef memoTable
-        hobj <- case HashMap.lookup hst curMemoTable of
-          Just found -> return found
-          Nothing    -> do
-            let to_eval = T.unpack . T.concat $ [
-                  T.pack "(", makeTypeForcer hst, T.pack " (", code, T.pack "))"]
-            --let to_eval = T.unpack . T.concat $ [
-            --      T.pack "((", code, T.pack ") :: ", typeName hst, T.pack ")"]
-            made <- performGHCOps (Just $ "evaluate " ++ to_eval) sess (
-              GHC.compileExpr to_eval)
-            lift . atomicModifyIORef memoTable $ \oldTable ->
-              (HashMap.insert hst made oldTable, ())
-            return made
-        return $ MonoObj hst (Unsafe.Coerce.unsafeCoerce hobj)
-  tryMakeMonomorphic $ PolyObj orig_type orig_type (PolyObjCore core) []
+-- | Transform a GHC 'id' (basically, an object namespace thing that
+-- isn't a data constructor) into a (<name>, PreObj) pair.
 
 transformGHCId :: Text -> GHC.Id -> Maybe (Text, PreObj)
 transformGHCId import_module i = do
@@ -241,6 +356,14 @@ transformGHCId import_module i = do
       fullN   = T.concat [import_module, T.pack ".", oname]
   hst <- transformGHCType fullN False $ GHC.idType i
   return (oname, (fullN, hst))
+
+-- | Certain data constructors (all tuples, at the moment) need to
+-- have their constructors and co-constructors built in a special way
+-- (basically, because GHC thinks tells us the constructor is called
+-- something like GHC.Tuple.(,,), but to use it we actually ought to
+-- write just (,,)). Here is a list of overrides. It's a map data
+-- constructor name -> (code to give data constructor, code to give
+-- co-constructor).
 
 dataConSpecials :: HashMap Text (Text, Text)
 dataConSpecials = HashMap.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
@@ -261,6 +384,16 @@ dataConSpecials = HashMap.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
   ("GHC.Tuple.(,,,,,,,,,,,,,,)"  ,("(,,,,,,,,,,,,,,)",  "(:[])")),
   ("GHC.Tuple.(,,,,,,,,,,,,,,,)" ,("(,,,,,,,,,,,,,,,)", "(:[])"))
   ]
+
+-- | Convert a GHC Data constructor into two @(<name>, PreObj)@ pairs;
+-- one for the Data constructor itself (just thought of as a function)
+-- and one for the 'co-data constructor', a function we build on the
+-- fly which transforms an object constructed using the Data
+-- Constructor into a singleton list containing a tuple containing the
+-- arguments that were given to the Data Constructor to construct the
+-- object. (If we apply the 'co-data constructor' to something that
+-- was constructed using a different Data constructor for the same
+-- type, we get back an empty list.)
 
 transformGHCDataCon :: Text -> GHC.DataCon -> [] (Text, PreObj)
 transformGHCDataCon import_module dc = fromMaybe [] $ do
@@ -287,6 +420,10 @@ transformGHCDataCon import_module dc = fromMaybe [] $ do
     Just (code, cocode) -> [(oname, (code, dctyp)),
                             (T.concat [T.pack "*co-", oname], (cocode, codctyp))]
 
+-- | Convert a GHC TyThing into zero or more (Text, PreObj) pairs
+-- (actually, always at most one) and into zero, one or two (Text,
+-- TyNSElt) pairs.
+
 transformGHCTyThing :: Text -> GHC.TyThing -> ([(Text, PreObj)], [(Text, TyNSElt)])
 transformGHCTyThing im (GHCType.AnId     id) = (maybeToList $ transformGHCId      im id, [])
 #if __GLASGOW_HASKELL__ >= 708
@@ -298,10 +435,54 @@ transformGHCTyThing im (GHCType.ADataCon dc) = (transformGHCDataCon im dc,      
 transformGHCTyThing im (GHCType.ATyCon   tc) = ([], maybeToList (transformGHCTyNSElt im tc))
 transformGHCTyThing _  _                     = ([],                                      [])
 
+-- | Turn a list of GHC.TyThings into a 'Pre module'. This is like our
+-- representation of a module except that we have PreObjs instead of
+-- HsObjs. In particular, it's a pair (HashMap Text PreObj, HashMap
+-- Text TyNSElt) where the first hashmap is the object namespace and
+-- the second is the type namespace; in this, a TyNSElt is simply
+-- Either TyCon HsType, where a TyCon is what you might expect and an
+-- HsType represents a type synonym/typedef (with the free variables
+-- of the HsType corresponding to the parameters of the typedef). We
+-- want to be able to convert such a thing to a python object, which
+-- is what pythonateModuleRet does.
+
 makePreModule :: Text -> [GHC.TyThing] -> (HashMap Text PreObj, HashMap Text TyNSElt)
 makePreModule im tyths = let
   (objs, tynselts) = mconcat (map (transformGHCTyThing im) tyths)
   in (HashMap.fromList objs, HashMap.fromList tynselts)
+
+---------------------
+
+-- The third step of importing stuff from Haskell; convert PreObjs to
+-- HsObjs. This is done in the PythonM monad (and needs access to the
+-- GHCI session).
+
+-- | Turn a PreObj into an HsObj. In the PythonM monad.
+
+createObj :: GhcMonad.Session -> PreObj -> PythonM HsObj
+createObj sess (code, orig_type) = do
+  memoTable <- lift $ newIORef HashMap.empty
+  let core :: HsType -> PythonM HsObj
+      core hst = do
+        curMemoTable <- lift $ readIORef memoTable
+        hobj <- case HashMap.lookup hst curMemoTable of
+          Just found -> return found
+          Nothing    -> do
+            let to_eval = T.unpack . T.concat $ [
+                  T.pack "(", makeTypeForcer hst, T.pack " (", code, T.pack "))"]
+            --let to_eval = T.unpack . T.concat $ [
+            --      T.pack "((", code, T.pack ") :: ", typeName hst, T.pack ")"]
+            made <- performGHCOps (Just $ "evaluate " ++ to_eval) sess (
+              GHC.compileExpr to_eval)
+            lift . atomicModifyIORef memoTable $ \oldTable ->
+              (HashMap.insert hst made oldTable, ())
+            return made
+        return $ MonoObj hst (Unsafe.Coerce.unsafeCoerce hobj)
+  tryMakeMonomorphic $ PolyObj orig_type orig_type (PolyObjCore core) []
+
+-- | Convert a whole PreModule (as returned from makePreModule) into
+-- our representation of a final module, by transforming the PreObjs
+-- to HsObjs.
 
 createModule :: GhcMonad.Session -> (HashMap Text PreObj, HashMap Text TyNSElt) ->
               PythonM (HashMap Text HsObj, HashMap Text TyNSElt)
@@ -309,17 +490,66 @@ createModule sess (preobjs, tynselts) = do
   objs <- Data.Traversable.mapM (createObj sess) preobjs
   return (objs, tynselts)
 
-readGHCModule :: Text -> GhcMonad.Ghc [GHC.TyThing]
-readGHCModule name = do
-  mod        <- GHC.findModule (GHC.mkModuleName $ T.unpack name) Nothing
-  mi         <- GHC.getModuleInfo mod
-#if __GLASGOW_HASKELL__ >= 708
-  infos      <- mapM (GHC.getInfo False) $ maybe [] GHC.modInfoExports mi
-  return [a |  Just (a, _, _, _) <- infos]
-#else
-  infos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
-  return [a |  Just (a, _, _) <- infos]
-#endif
+----------------------
+
+-- In the code above, which is the main code which imports modules
+-- using GHCI and gets them ready to pass to Python, we construct a
+-- lot of TyCons, and when we do so we are always careful to mention a
+-- way that the TyCon can be accessed from importable names. It's
+-- always quite a complicated and convoluted way of access, involving
+-- importing some type alias or object, and then spelunking thorough
+-- its parse tree. In most cases, this is much too complicated---the
+-- TyCon in question will just be importable from some easy-to-find
+-- module, and we should just import it. 
+
+-- This next section of code handles coming up with a good list of
+-- modules where we think we might be able to find a given TyCon as
+-- immediately importable (and the combined list for all the TyCons
+-- mentioned in a given HsType, or a given module); getting GHC to
+-- read those modules to see if, in fact, they do export the TyCon in
+-- question, and finally modifying TyCons (or HsTypes, or whole
+-- PreModules) by replacing the TyCons' TyCLocations with better ones,
+-- if we found them.
+
+-- | Given a tycon, determine a good list of modules where we think we
+-- might be able to find it as immediately importable. Basically, it's
+-- the module of definition of the tycon and all it's ancestor
+-- modules, EXCEPT that if we're dealing with a GHC.blah module we
+-- don't search GHC.
+
+tyConOtherModsOfInterest :: TyCon -> Set Text
+tyConOtherModsOfInterest tyc = Set.fromList . modAncestry . tyConModule $ tyc
+
+-- | Utility function, used by tyConOtherModsOfInterest above.
+
+modAncestry :: Text -> [Text]
+modAncestry mod = map (T.intercalate dot) . drop n . inits . T.splitOn dot $ mod
+  where dot       = T.singleton '.'
+        n | T.take 4 mod == T.pack "GHC." = 2
+          | otherwise                     = 1
+
+-- | Given an HsType, determine a good list of modules where we think
+-- we might be able to find TyCons mentioned it it as immediately
+-- importable.
+
+hsTypeOtherModsOfInterest :: HsType -> Set Text
+hsTypeOtherModsOfInterest hst = let
+  headPart = either tyConOtherModsOfInterest (const Set.empty) (typeHead hst)
+  in mconcat (headPart : map hsTypeOtherModsOfInterest (typeTail hst))
+
+-- | Given an Pre-module, determine a good list of modules where we think
+-- we might be able to find TyCons mentioned it it as immediately
+-- importable.
+
+preModuleOtherModsOfInterest :: (HashMap Text PreObj, HashMap Text TyNSElt) -> Set Text
+preModuleOtherModsOfInterest (preobjs, tynselts)
+  = mconcat . map hsTypeOtherModsOfInterest $ (
+    (map snd $ HashMap.elems preobjs) ++ (rights $ HashMap.elems tynselts))
+
+-- | Given the name of a module, scan it for TyCons that it
+-- exports. If we find any, provide a map which sends a given TyCon to
+-- a 'better' version in which the TyCLocation is set to import it
+-- from the module in question.
 
 readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (HashMap TyCon TyCon, Maybe Text)
 readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
@@ -336,28 +566,10 @@ readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
           HashMap TyCon TyCon, Maybe Text)
         handler _ = return (HashMap.empty, Nothing)
 
-----
-
-modAncestry :: Text -> [Text]
-modAncestry mod = map (T.intercalate dot) . drop n . inits . T.splitOn dot $ mod
-  where dot       = T.singleton '.'
-        n | T.take 4 mod == T.pack "GHC." = 2
-          | otherwise                     = 1
-
-tyConOtherModsOfInterest :: TyCon -> Set Text
-tyConOtherModsOfInterest tyc = Set.fromList . modAncestry . tyConModule $ tyc
-
-hsTypeOtherModsOfInterest :: HsType -> Set Text
-hsTypeOtherModsOfInterest hst = let
-  headPart = either tyConOtherModsOfInterest (const Set.empty) (typeHead hst)
-  in mconcat (headPart : map hsTypeOtherModsOfInterest (typeTail hst))
-
-preModuleOtherModsOfInterest :: (HashMap Text PreObj, HashMap Text TyNSElt) -> Set Text
-preModuleOtherModsOfInterest (preobjs, tynselts)
-  = mconcat . map hsTypeOtherModsOfInterest $ (
-    (map snd $ HashMap.elems preobjs) ++ (rights $ HashMap.elems tynselts))
-
-----
+-- | Given a map from TyCons to 'better' versions of the same TyCons
+-- where placeholder TyCLocations have been replaced by something
+-- nicer, convert a Pre-module into a new version of that pre-module
+-- by replacing all TyCons with better versions, if available.
 
 canonicalizePreModuleTycs :: HashMap TyCon TyCon -> (HashMap Text PreObj, HashMap Text TyNSElt)
                              -> (HashMap Text PreObj, HashMap Text TyNSElt)
@@ -375,6 +587,9 @@ canonicalizePreModuleTycs canonMap (preobjs, tynselts)
 
 ----
 
+-- | Ensure that a set of modules (provided as a Set Text giving the
+-- module names) is in scope, *qualified*, in the ghci session.
+
 ensureModulesInContext :: Set Text -> GhcMonad.Ghc ()
 ensureModulesInContext toEnsure = do
   curiis <- GHC.getContext
@@ -387,8 +602,20 @@ ensureModulesInContext toEnsure = do
         GHC.ideclQualified = True})
     | modName <- Set.toList newImps] ++ curiis
 
+-- | Make a string like (x1, x2, x3, ..., xn), where the xs are all
+-- spelt out and numbered from low to high.
+
 mkTupStr :: Int -> Int -> String
 mkTupStr low high = "(" ++ intercalate "," (map (('x':) . show) [low..high]) ++ ")"
+
+-- There are certain functions that are needed to be able to construct
+-- lists and to construct and break apart tuples that are built in to
+-- the Haskell language and therefore not importable form anywhere,
+-- even the Prelude. We need to expose them to python though. This is
+-- done through 'accessBasics', which provides a pseudo-module
+-- containing what we need. The things we need are named in
+-- basicsByName, which is a list of pairs (<name under which thing
+-- should be exposed to python>, <haskell code to make that thing>)
 
 basicsByName = (
   [("[]", "[]"), ("()", "()"), ("(:)", "(:)")] ++
@@ -410,6 +637,19 @@ accessBasics sess = do
     return . HashMap.fromList . catMaybes $ maybePreobjs
   Data.Traversable.mapM (createObj sess) preobjs
 
+-- | Import a list of library modules. Given a Ghc session (needed to
+-- import anything), and a list of modules to import, we return a map
+-- @<module name> -> <imported module contents>@ where the imported
+-- module contents is a pair @(<object namespace>, <type constructor
+-- namespace>)@, where @<object namespace>@ is a map from name to
+-- @HsObj@, and where @<type constructor namespace>@ is a map from
+-- name to TyNSElt, which represents an element of the type
+-- (constructor) namespace. Specifically a TyNSElt is simply Either
+-- TyCon HsType, where a TyCon is what you might expect and an HsType
+-- represents a type synonym/typedef (with the free variables of the
+-- HsType corresponding to the parameters of the typedef).
+
+
 importLibModules :: GhcMonad.Session -> [Text] -> PythonM (
   HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))
 importLibModules sess names = do
@@ -424,6 +664,19 @@ importLibModules sess names = do
     return $ fmap (canonicalizePreModuleTycs canonMap) preModules0
   modules     <- mapM (createModule sess) preModules
   return . HashMap.fromList $ zip names modules
+
+-- | Import a list of source modules. Given a Ghc session (needed to
+-- import anything), and a list of FILENAMES OF source files
+-- containing modules to import, we return a map @<module name> ->
+-- <imported module contents>@ where the imported module contents is a
+-- pair @(<object namespace>, <type constructor namespace>)@, where
+-- @<object namespace>@ is a map from name to @HsObj@, and where
+-- @<type constructor namespace>@ is a map from name to TyNSElt, which
+-- represents an element of the type (constructor)
+-- namespace. Specifically a TyNSElt is simply Either TyCon HsType,
+-- where a TyCon is what you might expect and an HsType represents a
+-- type synonym/typedef (with the free variables of the HsType
+-- corresponding to the parameters of the typedef).
 
 importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
   HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))

@@ -21,5 +21,6 @@ from   hyphen.source_loading import find_and_load_haskell_source
 _USED = (hslowlevel, caches, utils, wrapping_pyfns, hsobj, marshall_obj_to_py,
          marshall_obj_to_hs, marshall_ctor, importing, HsType, TyCon, HsException)
 
+HsFunObj = marshall_ctor.marshall_tycon(utils.hs_Func)
 importing.install_hook()
 import hs.Prelude, hs.Data.Text, hs.GHC.Types, hs.GHC.Prim, hs.Data.ByteString

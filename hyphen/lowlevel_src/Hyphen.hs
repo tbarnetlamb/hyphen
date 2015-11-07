@@ -133,28 +133,34 @@ checkPythonSignals = do
   acquiringGIL . translatePyExceptionIfAny . treatingAsErr (-1) $ pyErr_CheckSignals
   return ()
 
--- |
-
+-- | Perform the given IO action, while simultaneously (in a separate
+-- thread) keep checking whether any python signal handlers need to
+-- run (and if so, ensuring that they do run).
 servicingPySignalHandlers :: forall a. IO a -> IO a
 servicingPySignalHandlers act = do
-  resultMVar <- (newEmptyMVar :: IO (MVar (Either SomeException a)))
-  workThrd   <- forkFinally act (putMVar resultMVar)
+  resultMVar <- (newEmptyMVar :: IO (MVar (Maybe (Either SomeException a))))
+  endSync    <- (newEmptyMVar :: IO (MVar ()))
+  workThrd   <- forkFinally (act >>. putMVar endSync ()) (putMVar resultMVar . Just)
   let loop :: IO (Either SomeException a)
-      loop = do threadDelay 50
-                Exception.catch checkPythonSignals (
-                  throwTo workThrd :: SomeException -> IO ())
-                threadDelay 50
-                mresult <- tryTakeMVar resultMVar
+      loop = do forkIO $ (threadDelay 50 >> tryPutMVar resultMVar Nothing >> return ())
+                mresult <- takeMVar resultMVar
                 case mresult of
-                  Just result -> return $ result
-                  Nothing     -> loop
+                  Just result -> return result
+                  Nothing     ->
+                    do Exception.catch checkPythonSignals processException
+                       loop
+
+      processException :: SomeException -> IO ()
+      processException ex =
+        do otherStopped <- tryPutMVar endSync () -- try to stop the other thread from ending
+           case otherStopped of
+             True  -> throwTo workThrd ex -- succeeded; other thread will wait for us to
+                                          -- interrupt it
+             False -> Exception.throwIO ex
   result <- loop
   case result of
     Left  ex  -> Exception.throwIO ex
     Right ans -> return ans
-
-threadToInterruptStack :: IORef [System.Mem.Weak.Weak ThreadId]
-threadToInterruptStack = unsafePerformIO (newIORef [])
 
 #if !defined(mingw32_HOST_OS)
 -- | Carry out the provided IO action, switching from the currently
@@ -202,6 +208,9 @@ catchingCtrlC = Exception.bracket before after . const
                           atomicModifyIORef threadToInterruptStack $
                             \lst -> (drop 1 lst, ())
 
+threadToInterruptStack :: IORef [System.Mem.Weak.Weak ThreadId]
+threadToInterruptStack = unsafePerformIO (newIORef [])
+
 -- | Set up a Haskell ctrl-C handler, and install it. Used by the C
 -- side, which takes a copy of this exception handler and uses it to
 -- build a 'compound exception handler'.
@@ -225,8 +234,16 @@ catchingCtrlC = id
 
 ------------------------------
 
+-- | Perform the given IO action, bracketing the action with
+-- operations to release and re-acquire the Python Global Interpreter
+-- Lock
+
 releasingGIL :: IO a -> IO a
 releasingGIL = Exception.bracket pyEval_SaveThread pyEval_RestoreThread . const
+
+-- | Perform the given IO action, bracketing the action with
+-- operations to acquire (if not already held) and release (if
+-- acquired) the Python Global Interpreter Lock
 
 acquiringGIL :: IO a -> IO a
 acquiringGIL = Exception.bracket pyGILState_Ensure' pyGILState_Release . const
@@ -239,6 +256,29 @@ acquiringGIL = Exception.bracket pyGILState_Ensure' pyGILState_Release . const
 data GILRule    = GILRuleLazy    | GILRuleFancy                          deriving Enum
 data SignalRule = SignalRuleLazy | SignalRuleHaskell | SignalRulePython  deriving Enum
 
+-- | Long running operations in Haskell ought sometimes to be
+-- 'protected' in one or both of two ways. Firstly, we might want to
+-- take some steps to release the python GIL while we're doing the
+-- long-running Haskell operation (since, in pure Haskell code, we're
+-- not using it, so other Python threads ought to be able to
+-- progress). Secondly, we might want to take some action such that
+-- signals (e.g. and interrupt coming from ctrl-C) will be correctly
+-- processed while we're working. (See the documentation for why this
+-- is not a foregone conclusion). We have two ways of doing this;
+-- either we can make sure that Python signal handlers continue to run
+-- even while we're running Haskell code, or we can enable the Haskell
+-- signal handler while the Haskell code is running.
+--
+-- A choice of whether we want to release the GIL is encoded as a
+-- GILRule ('lazy' means we don't bother to release the GIL; 'fancy'
+-- means that we do). A choice of whether we want to take steps to
+-- ensure signals are processed, and if so whether we want to do it
+-- the 'Haskell way' or the 'Python way', is encoded as a SignalRule
+-- (again, 'lazy' means don't bother to take any of these
+-- steps). protectLongRunningOperation then takes an IO action and
+-- replaces it with a new IO action that is protected in one or both
+-- of these ways.
+
 protectLongRunningOperation :: GILRule -> SignalRule -> IO a -> IO a
 protectLongRunningOperation gilRule sigRule
   = gilProtection gilRule . sigConversion sigRule
@@ -250,8 +290,14 @@ protectLongRunningOperation gilRule sigRule
 
 ------------------------------
 
+-- | Convenience function; given a function of one argument, make it
+-- into a function of two arguments which ignores its second argument
+-- in the obvious way.
+
 ignoring2nd :: (a -> c) -> (a -> b -> c)
 ignoring2nd fn a _ = fn a
+
+-- | Some standard constants from Python
 
 py_LT = 0 :: Int
 py_LE = 1 :: Int
@@ -259,6 +305,19 @@ py_EQ = 2 :: Int
 py_NE = 3 :: Int
 py_GT = 4 :: Int
 py_GE = 5 :: Int
+
+-- | To expose a comparison operation to python, you define a
+-- 'richcmpfunc' which basically takes the type of comparison test we
+-- desire to perform (e.g. py_LT if we're trying to decide whether a
+-- <= b) and which then returns a bool saying whether the test comes
+-- back positive or negative. The following function builds such a
+-- comparison function (of type @PyObj -> PyObj -> Int -> IO PyObj@)
+-- for pyobjs that works by converting the given pyobj to a haskell
+-- type @a@ that supports @Ord(a)@, and then using compare to do the
+-- comparison. We also take a function @ok :: PyObj -> IO Bool@ to
+-- decide whether we want to claim to know whether a given object can
+-- be compared. (It's important in Python only to claim comparisons
+-- that you actually can do...)
 
 compareVia :: Ord a => (PyObj -> IO Bool) -> (PyObj -> IO a)
               -> PyObj -> PyObj -> Int -> IO PyObj
@@ -275,6 +334,12 @@ compareVia ok unwrap obj1 obj2 cmp_desired = do
          3 {-py_NE-} -> case compare a1 a2 of {LT -> True;  EQ -> False; GT -> True;}
          4 {-py_GT-} -> case compare a1 a2 of {LT -> False; EQ -> False; GT -> True;}
          5 {-py_GE-} -> case compare a1 a2 of {LT -> False; EQ -> True;  GT -> True;}
+
+-- We now define various operations on tycons. These are generally
+-- sent directly via the C layer into the method tables (etc.) that we
+-- expose to python. Therefore, the documentation of what these
+-- functions do is found in the documentation of the low-level library
+-- itself.
 
 foreign export ccall tycon_hash               :: PyObj -> IO Int
 tycon_hash       = return . hash                             <=< unwrapPythonTyCon
@@ -315,6 +380,12 @@ foreign export ccall tycon_getkind            :: PyObj -> Ptr () -> IO PyObj
 tycon_getkind    = ignoring2nd (
                    pythonateString . kindString . tyConKind  <=< unwrapPythonTyCon)
 
+-- We now define various operations on hstypes. These are generally
+-- sent directly via the C layer into the method tables (etc.) that we
+-- expose to python. Therefore, the documentation of what these
+-- functions do is found in the documentation of the low-level library
+-- itself.
+
 foreign export ccall hstype_hash              :: PyObj -> IO Int
 hstype_hash      = return . hash               <=< unwrapPythonHsType
 
@@ -347,12 +418,18 @@ hstype_getfvs    = ignoring2nd (
   (treatingAsErr nullPyObj . pythonateString . kindString)
   . typeFreeVars <=< unwrapPythonHsType)
 
+-- | Version of unwrapHsType which (unlike unwrapHsType itself) checks
+-- that the python object to which it is applied is really an HsType
+-- (unwrapHsType itself just has undefined behavor in that case...)
+
 unwrapHsTypeChecked :: String -> PyObj -> PythonM HsType
 unwrapHsTypeChecked errContextMsg val = do
   valOK <- lift $ pyHsType_Check  val
   unless valOK $ pyTypeErr'' ("HsType for " ++ errContextMsg) val
   lift $ unwrapPythonHsType val
 
+-- We continue to define various operations on hstypes...
+  
 foreign export ccall hstype_subst           :: PyObj -> PyObj -> PyObj -> IO PyObj
 hstype_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size args
@@ -377,6 +454,12 @@ hstype_gethead_ll p _ = do hstype <- unwrapPythonHsType p
                            case typeHead hstype of
                              Left tyc         -> wrapPythonTyCon tyc
                              Right (Var v, k) -> pythonateText  v
+
+-- We now define various operations on hsobjraws. These are generally
+-- sent directly via the C layer into the method tables (etc.) that we
+-- expose to python. Therefore, the documentation of what these
+-- functions do is found in the documentation of the low-level library
+-- itself.
 
 foreign export ccall hsobjraw_gethstype     :: PyObj -> Ptr () -> IO PyObj
 hsobjraw_gethstype = ignoring2nd (wrapPythonHsType . objType <=< unwrapPythonHsObjRaw)
@@ -414,6 +497,18 @@ hsobjraw_new args kwds sptr_loc = liftM (fromMaybe (-1)) . runMaybeT $ do
 
 foreign import ccall c_makeHaskellText :: PyObj -> IO PyObj
 
+-- | It's convenient to have a Haskell function that takes a PyObj
+-- which wraps a python string, and pulls out a Haskell Text
+-- representing the same string. We do this in a somewhat inefficient
+-- manner (which doesn't really matter, since we only use this in
+-- making error messages and other far-from-inner-loop operations). In
+-- particular, we build a tuple containing the python string in
+-- question, then call to_haskell_Text (which builds an HsObjRaw
+-- wrapping a Text representing the stirng in question) and finally
+-- unpack and discard the HsObjRaw to get the Text we want. The
+-- c_makeHaskellText helper function imported above from C does
+-- everything except unwrap the HsObjRaw.
+
 textFromPythonObj :: PyObj -> PythonM Text
 textFromPythonObj pyobj =
   do pyobj_hsstr  <- treatingAsErr nullPyObj $ c_makeHaskellText pyobj
@@ -422,6 +517,10 @@ textFromPythonObj pyobj =
        py_DECREF pyobj_hsstr
        return (Unsafe.Coerce.unsafeCoerce ptr :: Text)
 
+-- | Given a string which is NOT a valid Haskell type variable, return
+-- Just s, where s is a string containing an explanation of why
+-- not. Otherwise, return Nothing.
+
 invalidTyVarMsg :: String -> Maybe String
 invalidTyVarMsg varString
   | not (all isAlphaNum varString)       = Just "contains illegal characters."
@@ -429,12 +528,32 @@ invalidTyVarMsg varString
   | not (all isLower $ take 1 varString) = Just "does not begin with a lower-case letter."
   | otherwise                            = Nothing
 
+-- | Given a string which might or might not be a valid Haskell type
+-- variable, determine whether it is or it isn't. If it is, do
+-- nothing. If it isn't, create a nice exception with a good error
+-- message explaining why not.
+
 throwOnInvalidTyVar :: Text -> PythonM ()
 throwOnInvalidTyVar varString = case invalidTyVarMsg (T.unpack varString) of
   Just errMsg -> lift (
     pyValueErr . T.pack $ "Type variable '" ++ T.unpack varString ++ "'" ++ errMsg
     ) >> mzero
   _           -> return ()
+
+-- | Interpret an argument given to a TyCon which has been used as a
+-- function. (Using Tycons as functions is one of the ways we can
+-- construct types in Hyphen; the other is by calling the HsType
+-- object itself.) Each Python argument should either be an HsType
+-- python object (which represents a Haskell type in the obvious way)
+-- or a string which is a valid name for a type variable (which
+-- represents the HsType consisting of that type variable, with
+-- whatever kind that argument is required to have by the TyCon which
+-- is being called. This function interprets an argument PyObj as an
+-- HsType in this way, raising a nice type error if the argument is
+-- not legal according to the above rules. (It doesn't check that the
+-- kind of an HsType provided is correct; that will be done
+-- elsewhere.) The Kind parameter is the expected kind of the
+-- argument, only used if the arugment is a string.
 
 interpretTyConCallArgument :: Kind -> PyObj -> PythonM HsType
 interpretTyConCallArgument expectedKind pyObj
@@ -446,6 +565,12 @@ interpretTyConCallArgument expectedKind pyObj
          throwOnInvalidTyVar varString
          return $ mkHsType (Right $ (Var varString, expectedKind)) []
 
+-- | Given a PyObj representing a TyCon and a list of PyObjs
+-- representing parameters with which the TyCon has been called, carry
+-- out the call to construct a new type. See
+-- interpretTyConCallArgument docstring above for what's a valid
+-- argument and how it is interpreted.
+
 constructHsTypeFromTycon :: PyObj -> [PyObj] -> PythonM HsType
 constructHsTypeFromTycon head_pyobj tail_list_pyobj = do
   head            <- lift $ unwrapPythonTyCon head_pyobj
@@ -455,6 +580,9 @@ constructHsTypeFromTycon head_pyobj tail_list_pyobj = do
                          (kindArgKinds $ tyConKind head) tail_list_pyobj
   promoteErrAsValueErr $ mkHsTypeSafe (Left head) tail_list
 
+-- | Code for handling a user's attempt to call a TyCon
+-- object. Basically just call constructHsTypeFromTycon above.
+
 foreign export ccall tycon_call             :: PyObj -> PyObj -> PyObj -> IO PyObj
 tycon_call self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   check (kwargs == nullPyObj)
@@ -462,6 +590,23 @@ tycon_call self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   nArgs           <- treatingAsErr (-1) $ pyTuple_Size args
   tail_list_pyobj <- mapM (lift . pyTuple_GET_ITEM args) [0..nArgs-1]
   lift . wrapPythonHsType =<< constructHsTypeFromTycon self_pyobj tail_list_pyobj
+
+-- | Code to implement callign the HsType type directly to construct a
+-- new HsType. The first parameter must either be a TyCon or a string
+-- (which is a valid type variable). If the first parameter is a
+-- TyCon, we essentially simulate the effect of calling the TyCon with
+-- the remaining arguments (by invoking constructHsTypeFromTycon). If
+-- the first parameter is a string, then we will construct an HsType
+-- whose head is a type variable (unusual in Haskell, but certainly
+-- within the rules). In this case, we support a 'kind' keyword
+-- argument, whereby the user can specify the kind of the final
+-- returned type (and hence, implicitly, the kind of the type variable
+-- used as the head, which would otherwise not be completely
+-- determined). In this case, all the arguments must be genuine
+-- HsTypes since if a string is used (to represent a type variable) we
+-- will not be able to determine its kind from context. So a user
+-- should write @HsType('a', HsType('b', kind='*'), kind-='*')@, not
+-- @HsType('a', 'b', kind='*')@.
 
 foreign export ccall hstype_new             :: PyObj -> PyObj -> (Ptr WStPtr) -> IO Int
 hstype_new args kwds sptr_loc = liftM (fromMaybe (-1)) . runMaybeT $ do
@@ -496,6 +641,17 @@ hstype_new args kwds sptr_loc = liftM (fromMaybe (-1)) . runMaybeT $ do
 
 ------------------------------------------------------------------
 
+-- | As part of initializing the hslowlevel module, we want to add to
+-- it HsType objects representing all the basic Haskell types like
+-- Bool and Char. The following function is used to add a single such
+-- function. It is polymorphic, and by providing arguments of
+-- appropriate types we can force the type variable @a@ to match the
+-- type for which we wish to construct an HsType to insert into the
+-- module. This must be a 'simple type' (that is, all the Type
+-- Constructors used in it are fully saturated). The first parameter
+-- is the module we wish to insert the HsType into; the String is the
+-- name under which we should insert it.
+
 addSimpleHsTypeObjToModule :: Typeable a => PyObj -> String -> (a -> a) -> PythonM ()
 addSimpleHsTypeObjToModule module_ name ifn = do
   let hsType = hsTypeFromSimpleTypeRep $ typeOf (ifn undefined)
@@ -504,6 +660,10 @@ addSimpleHsTypeObjToModule module_ name ifn = do
     treatingAsErr (-1) . withCString name $ \cStrName ->
       pyModule_AddObject module_ cStrName pyHsType
   return ()
+
+-- | As part of initializing the hslowlevel module, we want to add to
+-- it HsType objects representing all the basic Haskell types like
+-- Bool and Char. We do this with the following function.
 
 foreign export ccall addSimpleHsTypeObjsToModule :: PyObj -> IO Int
 addSimpleHsTypeObjsToModule module_ = liftM (fromMaybe (-1)) . runMaybeT $ do
@@ -518,14 +678,36 @@ addSimpleHsTypeObjsToModule module_ = liftM (fromMaybe (-1)) . runMaybeT $ do
   addSimpleHsTypeObjToModule module_ "hstype_Double"     (id :: Double     -> Double)
   return 0
 
+-- | Given an HsObjRaw, check that the underlying Haskell object is of
+-- some particular type and then extract the object and perform some
+-- Haskell operation on it. Before the operation is performed, we
+-- reduce the HsObjRaw to normal form (i.e. de-lazy-fy it): this is
+-- appropriate for the intended use cases, because the intention is
+-- that the operation we're about to perform is to convert it to a
+-- Python object, which is necessarily non-lazy. While forcing the
+-- object (which may involve a lot of Haskell computation) we may
+-- release the GIL and/or switch on the Haskell event handler or
+-- service Python events. The configuration for which fo these to do
+-- is given by providing a GILRule and SignalRule, although these are
+-- provided encoded as Ints for easier interoperating with C.
+
 withHsObjRawOfType :: (NFData a) =>
-                      HsType -> (a -> IO PyObj) -> Int -> Int -> PyObj -> IO PyObj
+                      HsType      -- ^ The expected type of the HsObjRaw;
+                                  -- must match/encode type @a@ in type of
+                                  -- next argument
+                      -> (a -> IO PyObj) -- ^ The function to apply, returning a PyObj
+                      -> Int      -- ^ The GILRule    desired (in Int form via fromEnum)
+                      -> Int      -- ^ The SignalRule desired (in Int form via fromEnum)
+                      -> PyObj    -- ^ Python object which contians
+                                  -- the HsObjRaw to which we do the
+                                  -- work.
+                      -> IO PyObj
 withHsObjRawOfType ty f gilCode sigCode pyargtuple
   = liftM (fromMaybe nullPyObj) . runMaybeT $ do
       pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
       obj   <- lift $ unwrapPythonHsObjRaw pyobj
       let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
-          processObj obj = do protectLro (obj `deepseq` return ())
+          processObj obj = do protectLro (Exception.evaluate $ force obj)
                               f obj
       translatingHsExcepts  $ case obj of
         MonoObj ty' ptr ->
@@ -536,12 +718,25 @@ withHsObjRawOfType ty f gilCode sigCode pyargtuple
         _ ->   pyTypeErr' $ "Only monomorphic objects supported."
 
 
+-- | As withHsObjRawOfType except the HsType is automatically inferred
+-- from the type variable @a@; note that this requires that @a@ have a
+-- 'simple type' (all the Type Constructors used in the type are fully
+-- saturated).
+
 withHsObjRawSimp :: (Typeable a, NFData a) =>
                     (a -> IO PyObj) -> Int -> Int -> PyObj -> IO PyObj
 withHsObjRawSimp fn = let
   typeConstrainer :: (a -> b) -> a
   typeConstrainer = const undefined
   in withHsObjRawOfType (hsTypeFromSimpleTypeRep $ typeOf $ typeConstrainer fn) fn
+
+-- Now provide the core of the implementation of the from_haskell_X
+-- functions that will be exposed to Python. In the C layer, the
+-- from_haskell_X function (for whatever X) will be defined as a thin
+-- wrapper around the from_haskell_X_impl function that we will
+-- define. The wrapper simply discards the un-needed PyObj which
+-- contains the module itself, and provides two Ints, which are
+-- encoded versions of the GILRule and SignalRule in force.
 
 foreign export ccall from_haskell_Bool_impl       :: Int -> Int -> PyObj -> IO PyObj
 from_haskell_Bool_impl        = withHsObjRawSimp pythonateBool
@@ -570,21 +765,31 @@ from_haskell_Float_impl       = withHsObjRawSimp pythonateFloat
 foreign export ccall from_haskell_Double_impl     :: Int -> Int -> PyObj -> IO PyObj
 from_haskell_Double_impl      = withHsObjRawSimp pythonateDouble
 
+-- Now implement the buildHaskellX functions, which are used to create
+-- Python HsObjRaw objects containing particular Haskell values, where
+-- the value is provided in some C-compatile way.
+
 foreign export ccall buildHaskellBool       :: Bool   -> IO PyObj
 buildHaskellBool       = formSimpleHsObjRaw
 
 foreign export ccall buildHaskellChar       :: Char   -> IO PyObj
 buildHaskellChar       = formSimpleHsObjRaw
 
+-- String is provided by C caller as Ptr to UTF16 and a length (in double-byte words).
+
 foreign export ccall buildHaskellString     :: Ptr Word16 -> Int -> IO PyObj
 buildHaskellString     = curry (
   formSimpleHsObjRaw . T.unpack
   <=< uncurry Data.Text.Foreign.fromPtr . second (fromInteger . toInteger))
 
+-- String is provided by C caller as Ptr to UTF16 and a length (in double-byte words).
+
 foreign export ccall buildHaskellText       :: Ptr Word16 -> Int -> IO PyObj
 buildHaskellText       = curry (
   formSimpleHsObjRaw
   <=< uncurry Data.Text.Foreign.fromPtr . second (fromInteger . toInteger))
+
+-- String is provided by C caller as Ptr to bytes and a length (in bytes).
 
 foreign export ccall buildHaskellByteString :: CString -> Int -> IO PyObj
 buildHaskellByteString = curry (formSimpleHsObjRaw <=< Data.ByteString.packCStringLen)
@@ -594,6 +799,8 @@ buildHaskellInt        = formSimpleHsObjRaw
 
 foreign export ccall buildHaskellInteger    :: Int     -> IO PyObj
 buildHaskellInteger    = formSimpleHsObjRaw . toInteger
+
+-- Build Integer from a String containing an ASCII hex encoding of the number.
 
 foreign export ccall buildHaskellIntegerStr :: CString -> Int -> IO PyObj
 buildHaskellIntegerStr = curry (
@@ -610,29 +817,26 @@ buildHaskellDouble   = formSimpleHsObjRaw
 
 ------------------------------------------------------------------
 
+-- | When we import a Haskell module, we end up with a pair (HashMap
+-- Text HsObj, HashMap Text TyNSElt) where the first hashmap is the
+-- object namespace and the second is the type namespace; in this, a
+-- TyNSElt is simply Either TyCon HsType, where a TyCon is what you
+-- might expect and an HsType represents a type synonym/typedef (with
+-- the free variables of the HsType corresponding to the parameters of
+-- the typedef). We want to be able to convert such a thing to a
+-- python object, which is what pythonateModuleRet does.
+
 pythonateModuleRet :: (HashMap Text HsObj, HashMap Text TyNSElt) -> PythonM PyObj
 pythonateModuleRet (objs, tycelts) = pythonateTuple [
   prepareDict (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs,
   prepareDict (treatingAsErr nullPyObj . either wrapPythonTyCon wrapPythonHsType) tycelts]
   where prepareDict = pythonateHDict (treatingAsErr nullPyObj . pythonateText)
 
-wrapImport :: (GhcMonad.Session -> [Text] ->
-               MaybeT IO (HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt)))
-              -> WStPtr -> PyObj -> IO PyObj
-wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
-  sess  <- lift $ deRefStablePtr (
-    castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
-  nArgs <- treatingAsErr (-1) $ pyTuple_Size pyargsTuple
-  check (nArgs > 0) $ "hyphen.hyphen_import_src: must have at least one argument."
-  let getArgChecked :: Int -> PythonM Text
-      getArgChecked idx = do
-        pyobj <- lift $ pyTuple_GET_ITEM pyargsTuple (idx - 1)
-        ok    <- lift $ pyUnicode_Check pyobj
-        unless ok $ pyTypeErr'' ("string as argument " ++ show idx) pyobj
-        textFromPythonObj pyobj
-  allSrcsList <- mapM getArgChecked [1..nArgs]
-  pythonateHDict (treatingAsErr nullPyObj . pythonateText) pythonateModuleRet
-    =<< (i_fn sess allSrcsList)
+-- | The function prepare_GHC_state is called by the C layer at module
+-- startup to set-up some GHC to allow us to import modules. It
+-- basically just calls createGHCSession then wraps the resulting
+-- Session in a StablePtr so that the C layer can take care of it for
+-- us.
 
 foreign export ccall prepare_GHC_state :: Ptr WStPtr -> IO Int
 prepare_GHC_state addr = liftM (fromMaybe (-1)) . runMaybeT $ do
@@ -641,6 +845,9 @@ prepare_GHC_state addr = liftM (fromMaybe (-1)) . runMaybeT $ do
   lift $ poke addr (castStablePtrToPtr (stable :: StablePtr GhcMonad.Session))
   return 0
 
+-- | The function close_GHC_state is called by the C layer at module
+-- teardown to clear up the GHC state.
+
 foreign export ccall close_GHC_state :: WStPtr -> IO Int
 close_GHC_state stableSessionPtr = liftM (fromMaybe (-1)) . runMaybeT $ do
   sess  <- lift $ deRefStablePtr (
@@ -648,6 +855,62 @@ close_GHC_state stableSessionPtr = liftM (fromMaybe (-1)) . runMaybeT $ do
   translatingHsExcepts . lift $ flip GhcMonad.reflectGhc sess $ do
     flags <- GHC.getSessionDynFlags
     GHC.defaultCleanupHandler flags $ return 0
+
+-- | Fetch the integer which means GILRuleLazy
+
+foreign export ccall get_GIL_mode_lazy          :: IO Int
+get_GIL_mode_lazy       = return $ fromEnum GILRuleLazy
+
+-- | Fetch the integer which means GILRuleFancy
+
+foreign export ccall get_GIL_mode_fancy         :: IO Int
+get_GIL_mode_fancy      = return $ fromEnum GILRuleFancy
+
+-- | Convert a GILRule encoded as an integer to a nice Python string
+-- describing the GILRule
+
+foreign export ccall stringify_GIL_mode         :: Int -> IO PyObj
+stringify_GIL_mode      = pythonateString . displayFn . toEnum
+  where displayFn GILRuleLazy  = "lazy"
+        displayFn GILRuleFancy = "fancy"
+
+-- | Fetch the integer which means SignalRuleLazy
+
+foreign export ccall get_signal_mode_lazy    :: IO Int
+get_signal_mode_lazy    = return $ fromEnum SignalRuleLazy
+
+-- | Fetch the integer which means SignalRuleHaskell
+
+foreign export ccall get_signal_mode_haskell :: IO Int
+get_signal_mode_haskell = return $ fromEnum SignalRuleHaskell
+
+-- | Fetch the integer which means SignalRulePython
+
+foreign export ccall get_signal_mode_python  :: IO Int
+get_signal_mode_python  = return $ fromEnum SignalRulePython
+
+-- | Convert a SignalRule encoded as an integer to a nice Python
+-- string describing the SignalRule
+
+foreign export ccall stringify_signal_mode   :: Int -> IO PyObj
+stringify_signal_mode   = pythonateString . displayFn . toEnum
+  where displayFn SignalRuleLazy    = "lazy"
+        displayFn SignalRuleHaskell = "haskell"
+        displayFn SignalRulePython  = "python"
+
+-- Now we provide the main implementations of several functions that
+-- are going to be exposed as part of the hslowlevel module. For
+-- documentation of what the functions do, see the documenation of
+-- hslowlevel itself. In some cases, the function as defined here is
+-- in exactly the form needed to stick it in the Python module
+-- table. In others (indicated by a '_core' or an '_impl' in the name)
+-- there is a thin C wrapper around the function defined here which is
+-- actually inserted into the Python module table. In the latter case,
+-- there will be a brief comment saying what the wrapper does.
+
+-- The next three functions are all wrapped in C. The C wrapper
+-- discards the PyObj which encodes the module (we never need it) and
+-- provides the WStPtr giving the GHC state.
 
 foreign export ccall hyphen_import_lib_core :: WStPtr -> PyObj -> IO PyObj
 hyphen_import_lib_core = wrapImport importLibModules
@@ -666,31 +929,26 @@ hyphen_access_basics_core stableSessionPtr pyargsTuple =
     pythonateHDict (treatingAsErr nullPyObj . pythonateText)
       (treatingAsErr nullPyObj . wrapPythonHsObjRaw) objs
 
-foreign export ccall get_GIL_mode_lazy          :: IO Int
-get_GIL_mode_lazy       = return $ fromEnum GILRuleLazy
+-- | This function captures the commonality between
+-- hyphen_import_lib_core and hyphen_import_src_core defined above.
 
-foreign export ccall get_GIL_mode_fancy         :: IO Int
-get_GIL_mode_fancy      = return $ fromEnum GILRuleFancy
-
-foreign export ccall stringify_GIL_mode         :: Int -> IO PyObj
-stringify_GIL_mode      = pythonateString . displayFn . toEnum
-  where displayFn GILRuleLazy  = "lazy"
-        displayFn GILRuleFancy = "fancy"
-
-foreign export ccall get_signal_mode_lazy    :: IO Int
-get_signal_mode_lazy    = return $ fromEnum SignalRuleLazy
-
-foreign export ccall get_signal_mode_haskell :: IO Int
-get_signal_mode_haskell = return $ fromEnum SignalRuleHaskell
-
-foreign export ccall get_signal_mode_python  :: IO Int
-get_signal_mode_python  = return $ fromEnum SignalRulePython
-
-foreign export ccall stringify_signal_mode   :: Int -> IO PyObj
-stringify_signal_mode   = pythonateString . displayFn . toEnum
-  where displayFn SignalRuleLazy    = "lazy"
-        displayFn SignalRuleHaskell = "haskell"
-        displayFn SignalRulePython  = "python"
+wrapImport :: (GhcMonad.Session -> [Text] ->
+               MaybeT IO (HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt)))
+              -> WStPtr -> PyObj -> IO PyObj
+wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+  sess  <- lift $ deRefStablePtr (
+    castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
+  nArgs <- treatingAsErr (-1) $ pyTuple_Size pyargsTuple
+  check (nArgs > 0) $ "hyphen.hyphen_import_src: must have at least one argument."
+  let getArgChecked :: Int -> PythonM Text
+      getArgChecked idx = do
+        pyobj <- lift $ pyTuple_GET_ITEM pyargsTuple (idx - 1)
+        ok    <- lift $ pyUnicode_Check pyobj
+        unless ok $ pyTypeErr'' ("string as argument " ++ show idx) pyobj
+        textFromPythonObj pyobj
+  allSrcsList <- mapM getArgChecked [1..nArgs]
+  pythonateHDict (treatingAsErr nullPyObj . pythonateText) pythonateModuleRet
+    =<< (i_fn sess allSrcsList)
 
 foreign export ccall ok_python_identif          :: PyObj -> PyObj -> IO PyObj
 ok_python_identif _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
@@ -720,6 +978,10 @@ hyphen_apply _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   obj' <- translatingHsExcepts  $ apply fnToApply trueArgsList
   lift $ wrapPythonHsObjRaw obj'
 
+-- The next function is wrapped in C. The C wrapper discards the PyObj
+-- which encodes the module (we never need it) and provides Ints
+-- encoding the GILRule and the SignalRule which are in force
+
 foreign export ccall hyphen_doio_impl           :: Int -> Int -> PyObj -> IO PyObj
 hyphen_doio_impl gilCode sigCode pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
@@ -728,6 +990,11 @@ hyphen_doio_impl gilCode sigCode pyargtuple = liftM (fromMaybe nullPyObj) . runM
   let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
   obj'  <- translatingHsExcepts . lift . protectLro $ act
   lift $ wrapPythonHsObjRaw obj'
+
+-- The next function is wrapped in C. The C layer parses the argument
+-- tuple and validates teh types, then gives the arguments to the
+-- function below (so the arguments below exactly match the arguments
+-- of the Python function we're exposing...)
 
 foreign export ccall hyphen_wrap_pyfn_impl      :: PyObj -> PyObj -> Int -> IO PyObj
 hyphen_wrap_pyfn_impl fn tyPyo arityReq = liftM (fromMaybe nullPyObj) . runMaybeT $ do

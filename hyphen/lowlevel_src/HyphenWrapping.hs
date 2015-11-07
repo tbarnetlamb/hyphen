@@ -27,6 +27,13 @@ import HsObjRaw
 -- Python TyCon (or HsType, or HsObjRaw) and other C functions which
 -- build the wrapping Python TyCon (or HsType, or HsObjRaw) from the
 -- stableptr we want inside.
+-- 
+-- Note that the functions we define here that take PyObjs as their
+-- arguments and 'unwrap' them do no checking that the PyObj they are
+-- provided with are of the Python types that are expected. (I.e., for
+-- example, unwrapPythonTyCon doesn't check that it's applied to a
+-- TyCon.) If these functions are applied to objects of the wrong
+-- (python) type, undefined behavior will ensue...
 
 -- | We also take the oppotunity to import a few related functions,
 -- which check that PyObjs are of type TyCon (or HsType, or HsObjRaw)

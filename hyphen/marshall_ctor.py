@@ -391,9 +391,10 @@ def make_component_fetcher(co_dacon):
             # We memoize the result in _components_store for speed efficiency
             return self._components_store
         except AttributeError:
-            self._components_store = break_haskell_tuple(
-                hslowlevel.apply(hs_head, hslowlevel.apply(
-                    co_dacon, self)))
+            self._components_store = tuple(map(
+                marshall_obj_to_py.hs_to_py, break_haskell_tuple(
+                    hslowlevel.apply(hs_head, hslowlevel.apply(
+                        co_dacon, self)), treat_nontuple_as_lenth_1_tuple=True)))
             return self._components_store
     return _components
 
@@ -435,10 +436,10 @@ tycon_specials = {
     hs_Func : {
         "__call__"    : apply_marshalled,
         "NAME"        : "HsFunObj",
+        "__module__"  : "hyphen"
         },
     hs_IO : {
-        "__call__"    : doio_marshalled,
-        "NAME"        : "HsFunObj",
+        "act"         : doio_marshalled,
         },
     hs_Maybe : {
         "__bool__"    : member_from_unary_hsfn(hs_isJust),
@@ -498,6 +499,20 @@ def replace_placeholder_names(d):
             and isinstance(key, str)):
             d[key].__name__ = key
 
+def strip_prefix_and_sufix(str_, prefix, suffix):
+    """If str_ begins with the prefix given and ends with the suffix
+    given, return the string stripped of the prefix and
+    suffix. Otherwise, return None.
+
+    """
+    if str_.startswith(prefix) and str_.endswith(suffix) and (
+            len(str_) > len(prefix) + len(suffix)):
+        if suffix:
+            return str_[len(prefix):-len(suffix)]
+        else:
+            return str_[len(prefix):]
+    return None
+            
 def process_tycon(tycon, methods_by_name):
     """Build a Python class to represent a Haskell tycon. Parameter
     'tycon' should by a TyCon object (the kind of object used by the
@@ -512,7 +527,11 @@ def process_tycon(tycon, methods_by_name):
     customizations = {'__slots__'  : [],
                       '__module__' : 'hs.' + tycon.module}
     for name, meth_fn in methods_by_name.items():
-        customizations[name] = member_from_hsfn(meth_fn)
+        cutname = strip_prefix_and_sufix(name, 'hy__' + tycon.name + '__', '__')
+        if cutname is not None:
+            customizations['__' + cutname + '__'] = member_from_hsfn(meth_fn)
+        else:
+            customizations[name] = member_from_hsfn(meth_fn)
     if tycon in tycon_specials:
         customizations.update(tycon_specials[tycon])
     for hook in tycon_hooks:

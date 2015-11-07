@@ -14,7 +14,7 @@ static PyObject         *HsException;
 static HsPtr             ghc_interpreter_state = 0;
 static HsBool            ghc_srcmodules_loaded = 0;
 static int               gil_mode_selection    = 1;
-static int               sig_mode_selection    = 1;
+static int               sig_mode_selection    = 2;
 static PyOS_sighandler_t haskell_siginthandler = 0;
 static PyOS_sighandler_t python_siginthandler  = 0;
 static volatile int      signal_count          = 0;
@@ -496,6 +496,7 @@ static int
 unsettable(PyObject *self, PyObject *value, void *closure)
 {
   PyErr_SetString(PyExc_TypeError, "Read only member variable.");
+  return -1;
 }
 
 static PyGetSetDef TyCon_getsetters[] = {
@@ -939,61 +940,61 @@ hyphen_wrap_pyfn(PyObject *self, PyObject *args)
 static PyObject *
 hyphen_doio(PyObject *self, PyObject *args)
 {
-  hyphen_doio_impl(gil_mode_selection, sig_mode_selection, args);
+  return hyphen_doio_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Bool(PyObject *self, PyObject *args)
 {
-  from_haskell_Bool_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Bool_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Char(PyObject *self, PyObject *args)
 {
-  from_haskell_Char_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Char_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_String(PyObject *self, PyObject *args)
 {
-  from_haskell_String_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_String_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Text(PyObject *self, PyObject *args)
 {
-  from_haskell_Text_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Text_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_ByteString(PyObject *self, PyObject *args)
 {
-  from_haskell_ByteString_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_ByteString_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Int(PyObject *self, PyObject *args)
 {
-  from_haskell_Int_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Int_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Integer(PyObject *self, PyObject *args)
 {
-  from_haskell_Integer_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Integer_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Float(PyObject *self, PyObject *args)
 {
-  from_haskell_Float_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Float_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
 from_haskell_Double(PyObject *self, PyObject *args)
 {
-  from_haskell_Double_impl(gil_mode_selection, sig_mode_selection, args);
+  return from_haskell_Double_impl(gil_mode_selection, sig_mode_selection, args);
 }
 
 static PyObject *
@@ -1049,6 +1050,17 @@ to_haskell_Text(PyObject *self, PyObject *args)
   PyMem_Free(buffer);
   return ret;
 }
+
+/* It's convenient to have a Haskell function that takes a PyObj which
+   wraps a python string, and pulls out a Haskell Text representing
+   the same string. We do this in a somewhat inefficient manner (which
+   doesn't really matter, since we only use this in making error
+   messages and other far-from-inner-loop operations). In particular,
+   we build a tuple containing the python string in question, then
+   call to_haskell_Text (which builds an HsObjRaw wrapping a Text
+   representing the stirng in question) and finally unpack and discard
+   the HsObjRaw to get the Text we want. The following helper function
+   does everything except unwrap the HsObjRaw.*/
 
 HsPtr
 c_makeHaskellText(HsPtr str)
@@ -1167,6 +1179,7 @@ hyphen_import_src(PyObject *self, PyObject *args)
   if (ghc_srcmodules_loaded)
     {
       PyErr_SetString(PyExc_TypeError, "Can only load Haskell source modules once.");
+      return 0;
     }
   else
     {

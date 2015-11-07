@@ -83,7 +83,7 @@ if sys.platform[:6] == 'cygwin':
         '-I' + py_include, '-I' + haskell_include_path,
         '-D__GHCAUTOCONF_H__']))
 
-subprocess.check_call(flatten([
+invocation = flatten([
     'ghc', '-' + opts.dyn_or_static, '-shared', '-fPIC', '-no-hs-main',
     '-fwarn-unused-imports', '-cpp',
 
@@ -111,7 +111,10 @@ subprocess.check_call(flatten([
 
     # Linker libraries
     '-l' + HSrts_lib, '-l' + pylib(),
+])
 
+subprocess.check_call(invocation + ['-no-link'])
+subprocess.check_call(invocation + [
     # Linker options
     '-optl', ','.join(linker_opts())
-]))
+])

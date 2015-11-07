@@ -305,6 +305,24 @@ def breakup_known_so_far(known_so_far, expected_head, fv_src):
         return tuple(next(fv_src) for i in range(num_blanks)) + tuple(known_so_far.tail)
     return None
 
+def str_hstype_hint(obj, known_so_far, fv_src):
+    if known_so_far.head_ll == hs_Maybe:
+        inmaybe, = known_so_far.tail
+        if inmaybe.head_ll == hs_List and isblank(inmaybe.tail[0]):
+            return hs_Maybe(hs_List(hslowlevel.hstype_Char))
+        elif isblank(inmaybe):
+            return hs_Maybe(hslowlevel.hstype_Text)
+        else:
+            return hs_Maybe(inmaybe)
+    else:
+        if known_so_far.head_ll == hs_List and isblank(known_so_far.tail[0]):
+            return hs_List(hslowlevel.hstype_Char)
+        elif isblank(known_so_far):
+            return hslowlevel.hstype_Text
+        else:
+            return known_so_far
+
+
 def complex_hstype_hint(obj, known_so_far, fv_src):
     bkup_as_complex = breakup_known_so_far(known_so_far, hs_Complex, fv_src)
     if bkup_as_complex is None:
@@ -378,7 +396,7 @@ def set_hstype_hint(obj, known_so_far, fv_src):
 
 pyobj_hstype_hint_per_type_hooks = {
     bool       : throughmaybes_ifblank(hslowlevel.hstype_Bool),
-    str        : throughmaybes_ifblank(hslowlevel.hstype_Text),
+    str        : str_hstype_hint,
     bytes      : throughmaybes_ifblank(hslowlevel.hstype_ByteString),
     int        : throughmaybes_ifblank(hslowlevel.hstype_Integer),
     float      : throughmaybes_ifblank(hslowlevel.hstype_Float),

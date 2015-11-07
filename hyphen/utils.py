@@ -237,7 +237,7 @@ def make_hs_tuple_type(*components):
         raise ValueError('No length-1 tuples in Haskell')
     return hs_tupletycs_bylength[len(components)](*components)
 
-def break_haskell_tuple(tuple_):
+def break_haskell_tuple(tuple_, treat_nontuple_as_lenth_1_tuple=False):
     """If tuple_ is an HsObj representing a Haskell tuple object (o1, o2,
     ..., on) then we return a Python tuple (x1, ..., xn) where x1 is
     an HsObj wrapping x1 and so on.
@@ -257,6 +257,8 @@ def break_haskell_tuple(tuple_):
     try:
         tlen = hs_tupletyc_lengths[tuple_.hstype.head_ll]
     except KeyError as e:
+        if treat_nontuple_as_lenth_1_tuple:
+            return (tuple_,)
         raise TypeError('marshall_tuple: tuple input not recognized as being of a tuple '
                         'type. (NB: we only support tuples of length <= 14.)') from e
     build = []

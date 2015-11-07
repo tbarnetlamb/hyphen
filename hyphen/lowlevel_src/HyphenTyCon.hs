@@ -117,7 +117,7 @@ tyConRepr     tc@(TyCon {tyConLocation=InExplicitModuleNamed mname})
   = let name  = tyConName tc
         ok    = name /= (T.pack "_") && okPythonIdentif name
         adjN  = if ok then name else T.concat [T.pack "_['", name, T.pack "']"]
-    in T.concat [T.pack "hs.", mname, T.pack ".", adjN]
+    in T.concat [T.pack "hs.", mname, T.pack ".", adjN, T.pack ".hs_tycon"]
 tyConRepr     tc@(TyCon {tyConLocation=ivloc@(ImplicitlyVia {})})
   = let transformLocPath :: [Int] -> [Text]
         transformLocPath []      = [T.pack ".head_ll"]

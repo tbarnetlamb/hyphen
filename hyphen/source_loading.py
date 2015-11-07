@@ -2,7 +2,7 @@
 want to compile and import.
 
 In general, the preferred way of accessing Haskell code from Python
-via hyphen is to install the Haskell code as a Haskell-system-wide
+via hyphen is to install the Haskell code as a ghc-pkg registered
 library; such libraries can always be directly imported into Python
 with hyphen.
 
@@ -39,22 +39,22 @@ writing a python library which is being imported from somewhere on the
 python path and which (in turn) wants to import a little Haskell piece
 of code that lives in the same directory. (As we've said, the
 recommended way of handling this is to install the Haskell code as a
-Haskell library system-wide, then to import it from python... but
-we'll assume this isn't possible for you.) To enable option two, call
-find_and_load_haskell_source(check_full_path=True) as your python
-library module is imported. This will check the *entire python path*
-for Haskell files (using the same rules as were used to check the
-script directory above, including recursively reading
+Haskell library visible form ghc-pkg, then to import it from
+python... but we'll assume this isn't possible for you.) To enable
+option two, call find_and_load_haskell_source(check_full_path=True) as
+your python library module is imported. This will check the *entire
+python path* for Haskell files (using the same rules as were used to
+check the script directory above, including recursively reading
 subdirectories). We then compile them and again they may be
 imported. This is (a) somewhat slow, and (b) runs the risk that we'll
 come across an .hs file somewhere in the path which isn't valid
 Haskell and die.
 
 [There is also option 0: don't call find_and_load_haskell_source, and
-just access stuff from Haskell-system-wide libraries; and option 3:
-write your own code, similar to the code in this module, which
-interfaces directly with the low level layer, and sends it a
-precisely-chosen set of .hs files to compile.]
+just access stuff from ghc-pkg visible libraries; and option 3: write
+your own code, similar to the code in this module, which interfaces
+directly with the low level layer, and sends it a precisely-chosen set
+of .hs files to compile.]
 
 Once find_and_load_haskell_source has been called,
 find_and_load_haskell_source(check_full_path=True) cannot be called,
