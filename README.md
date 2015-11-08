@@ -89,7 +89,7 @@ this certainly works, for example:
 	5
 
 But we can also do other things. For instance, if the return value is
-a Haskell list, it's python representation will be a python iterable:
+a Haskell list, its python representation will be a python iterable:
 
     >>> for x in my_list:
     ...     print(x)
@@ -155,6 +155,10 @@ follows:
     
     extract_number :: Test -> Integer
     extract_number (Test i) = i
+
+    make_sum :: Test -> Integer -> Integer
+	make_sum (Test i) j = i + j
+
 
 Then from python we can do:
 
