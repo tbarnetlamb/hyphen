@@ -1,0 +1,23 @@
+-- hyphen-dummy.cabal; used to allow stack to fetch the right packages
+
+name:                hyphen-dummy
+version:             0.1.0.0
+-- synopsis:
+-- description:
+license:             GPL-2
+license-file:        LICENSE
+author:              dummy
+maintainer:          dummy
+-- copyright:
+-- category:
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  exposed-modules:     Test
+  -- other-modules:
+  other-extensions:    DeriveDataTypeable
+  build-depends:       base, text, transformers, mtl, parsec, hashable, unordered-containers, ghc-paths
+  -- hs-source-dirs:
+  default-language:    Haskell2010

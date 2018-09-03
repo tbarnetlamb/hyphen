@@ -2,6 +2,10 @@
 
 import sys, distutils.sysconfig, os, os.path, subprocess, optparse
 
+if sys.hexversion >> 24 < 3:
+    print("Python 3.x required")
+    sys.exit(1)
+
 def flatten(args):
     if isinstance(args, str):
         return [args]
@@ -98,8 +102,7 @@ invocation = flatten([
     cygpreppath(os.path.join(work_dir, 'lowlevel_src', hyphen_c)),
     '-i' + cygpreppath(os.path.join(work_dir, 'lowlevel_src')),
 
-    # Output/intermediate files
-    '-o',     cygpreppath(os.path.join(work_dir, 'hslowlevel' + suffix)),
+    # Intermediate files
     '-hidir', cygpreppath(os.path.join(work_dir, 'lowlevel_inter')),
     '-odir',  cygpreppath(os.path.join(work_dir, 'lowlevel_inter')),
 
@@ -116,5 +119,6 @@ invocation = flatten([
 subprocess.check_call(invocation + ['-no-link'])
 subprocess.check_call(invocation + [
     # Linker options
-    '-optl', ','.join(linker_opts())
+    '-optl', ','.join(linker_opts()),
+    '-o',     cygpreppath(os.path.join(work_dir, 'hslowlevel' + suffix)),
 ])

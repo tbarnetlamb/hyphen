@@ -28,11 +28,19 @@ import qualified Data.Traversable
 import qualified Unsafe.Coerce
 import qualified GHC
 import qualified GHC.Paths
+#if __GLASGOW_HASKELL__ >= 802
+import qualified PrelNames   as GHCPrelNames
+import qualified TysWiredIn  as GHCTysWiredIn
+#else
 import qualified StaticFlags as GHCStaticFlags
+#endif
 import qualified SysTools    as GHCSysTools
 import qualified TyCon       as GHCTyCon
 import qualified OccName     as GHCOccName
 import qualified Module      as GHCModule
+#if __GLASGOW_HASKELL__ >= 800
+import qualified Kind        as GHCKind
+#endif
 import qualified Type        as GHCType
 import qualified DynFlags    as GHCDynFlags
 import qualified HscMain     as GHCHscMain
@@ -66,11 +74,24 @@ import HyphenExceptions
 
 ourInitGhcMonad :: (GHC.GhcMonad m) => Maybe FilePath -> m ()
 ourInitGhcMonad mb_top_dir = do
+#if __GLASGOW_HASKELL__ >= 802
+#else
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
+#endif
 
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
+#if __GLASGOW_HASKELL__ >= 804
+  let llvmt = GHCOutputable.panic "v_unsafeGlobalDynFlags: llvmTargets not initialised"
+  dflags <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+              GHCDynFlags.defaultDynFlags mySettings llvmt))
+#else
   dflags <- GHCMonadUtils.liftIO
             $ GHCDynFlags.initDynFlags (GHCDynFlags.defaultDynFlags mySettings)
+#endif
+#if __GLASGOW_HASKELL__ >= 802
+  liftIO $ GHCDynFlags.setUnsafeGlobalDynFlags dflags
+#else
+#endif
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv dflags
   GHC.setSession env
 
@@ -122,7 +143,11 @@ reportingGHCErrors msgHint action = do
        hintedWith (Just h) s = concat [s, "\n(while trying to ", h, ")"]
 
        logHandler :: IORef String -> GHCDynFlags.LogAction
+#if __GLASGOW_HASKELL__ >= 800
+       logHandler ref dflags warnreason severity srcSpan style msg =
+#else
        logHandler ref dflags severity srcSpan style msg =
+#endif
            case severity of
              GHCErrUtils.SevError ->  modifyIORef' ref (++ printDoc)
              GHCErrUtils.SevFatal ->  modifyIORef' ref (++ printDoc)
@@ -145,6 +170,33 @@ createGHCSession = do
     ensureModulesInContext $ Set.fromList [T.pack "Prelude"])
   return session
 
+#if __GLASGOW_HASKELL__ >= 802
+isLiftedRuntimeRep arg
+  | Just (tc, []) <- GHCType.splitTyConApp_maybe arg
+  , Just dc       <- GHCTyCon.isPromotedDataCon_maybe tc
+     = dc `GHCPrelNames.hasKey` GHCPrelNames.liftedRepDataConKey
+  | otherwise = False
+#endif
+
+makeDePolyGHCKindChecker :: GHC.TyVar -> Maybe (GHC.Type -> Bool, GHC.Type)
+makeDePolyGHCKindChecker v
+#if __GLASGOW_HASKELL__ >= 802
+  | GHCType.isRuntimeRepVar v
+               = Just (isLiftedRuntimeRep, GHCTysWiredIn.liftedRepTy)
+#endif
+#if __GLASGOW_HASKELL__ >= 800
+  | GHCKind.isLiftedTypeKind (GHCType.tyVarKind v)
+               = Just (GHCKind.isLiftedTypeKind, GHCType.liftedTypeKind)
+#endif
+  | otherwise  = Nothing
+
+dePolyGHCKind :: GHC.Kind -> Maybe (GHC.Kind, [GHC.Type -> Bool])
+dePolyGHCKind k =
+  do let (vars, rest)  = GHC.splitForAllTys k
+     checkers <- mapM makeDePolyGHCKindChecker vars
+     return (GHCType.substTyWith vars (map snd checkers) rest,
+             map fst checkers)
+
 -- | Convert a GHC.Kind into one of our Kinds. This isn't guaranteed
 -- to work (so is wrapped in Maybe monad) because there are some Kinds
 -- known to GHC that are not part of general standard Haskell (unboxed
@@ -152,12 +204,16 @@ createGHCSession = do
 -- datatype. (Functions whose types have Kinds that are nonstandard in
 -- this way will simply not be visible through hyphen.)
 
-unpackGHCKind :: GHC.Kind -> Maybe Kind
-unpackGHCKind k
-  | GHCType.isFunTy k   = do (Kind ks') <- unpackGHCKind $ GHCType.funResultTy k
-                             (Kind . (: ks')) <$> unpackGHCKind (GHCType.funArgTy k)
+unpackSimpleGHCKind :: GHC.Kind -> Maybe Kind
+unpackSimpleGHCKind k
+  | GHCType.isFunTy k   = do (Kind ks') <- unpackSimpleGHCKind $ GHCType.funResultTy k
+                             (Kind . (: ks')) <$> unpackSimpleGHCKind (GHCType.funArgTy k)
+#if __GLASGOW_HASKELL__ >= 800
+  | otherwise           = do guard (GHCKind.isLiftedTypeKind k) >> (Just $ Kind [])
+#else
   | otherwise           = do (kcon, _) <- GHCType.splitTyConApp_maybe k
                              guard (kcon == GHCType.liftedTypeKindTyCon) >> (Just $ Kind [])
+#endif
 
 -- The basic process of importing Haskell names splits into three
 -- steps. In the first step, we invoke GHCI to read the module and we
@@ -194,12 +250,15 @@ readGHCModule :: Text -> GhcMonad.Ghc [GHC.TyThing]
 readGHCModule name = do
   mod        <- GHC.findModule (GHC.mkModuleName $ T.unpack name) Nothing
   mi         <- GHC.getModuleInfo mod
-#if __GLASGOW_HASKELL__ >= 708
-  infos      <- mapM (GHC.getInfo False) $ maybe [] GHC.modInfoExports mi
-  return [a |  Just (a, _, _, _) <- infos]
+#if __GLASGOW_HASKELL__ >= 804
+  xinfos      <- mapM (GHC.getInfo False) $ maybe [] GHC.modInfoExports mi
+  return [a |  Just (a, _, _, _, _) <- xinfos]
+#elif __GLASGOW_HASKELL__ >= 708
+  xinfos      <- mapM (GHC.getInfo False) $ maybe [] GHC.modInfoExports mi
+  return [a |  Just (a, _, _, _) <- xinfos]
 #else
-  infos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
-  return [a |  Just (a, _, _) <- infos]
+  xinfos      <- mapM GHC.getInfo $ maybe [] GHC.modInfoExports mi
+  return [a |  Just (a, _, _) <- xinfos]
 #endif
 
 -----------------------------
@@ -214,11 +273,13 @@ readGHCModule name = do
 -- information to that effect should be provided in the form of a
 -- Maybe TyCLocation.
 
-transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe TyCon
+transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe (TyCon, [GHC.Type -> Bool])
 transformGHCTyc loc tyc = do
   let ghcName = GHC.getName tyc
       modl    = GHC.nameModule ghcName
-#if __GLASGOW_HASKELL__ >= 710
+#if __GLASGOW_HASKELL__ >= 800
+      pckg    = T.pack . GHCModule.unitIdString $ GHC.moduleUnitId modl
+#elif __GLASGOW_HASKELL__ >= 710
       pckg    = T.pack . GHCModule.packageKeyString $ GHC.modulePackageKey modl
 #else
       pckg    = T.pack . GHCModule.packageIdString $ GHC.modulePackageId modl
@@ -226,10 +287,11 @@ transformGHCTyc loc tyc = do
       mname   = T.pack . GHC.moduleNameString $ GHC.moduleName modl
       oname   = T.pack . GHCOccName.occNameString $ GHC.getOccName ghcName
       loc'    = fromMaybe (InExplicitModuleNamed mname) loc
-  kind <- unpackGHCKind $ GHCTyCon.tyConKind tyc
-  return $ mkTyCon pckg mname oname loc' kind (GHC.isClassTyCon tyc)
+  (kind, chks) <- dePolyGHCKind $ GHCTyCon.tyConKind tyc
+  kind'        <- unpackSimpleGHCKind kind
+  return $ (mkTyCon pckg mname oname loc' kind' (GHC.isClassTyCon tyc), chks)
 
--- | Convert something from the Type Construct namepspace into a
+-- | Convert something from the Type Construct namespace into a
 -- (name, TyNSElt) pair. We need to know the module it was imported
 -- from. We might fail to convert if (say) the kind of a type alias is
 -- too complicated for us. (e.g. involves unboxed types).
@@ -241,13 +303,17 @@ transformGHCTyNSElt import_module tyc = let
   fullname     = T.concat [import_module, T.pack ".", oname]
   args         = [ Var . (T.append $ T.pack "arg_") . T.pack . show $ i
                  | i <- [1..GHCTyCon.tyConArity tyc]] :: [Var]
+#if __GLASGOW_HASKELL__ >= 800
+  in case GHCTyCon.expandSynTyCon_maybe tyc args of
+#else
   in case GHCTyCon.tcExpandTyCon_maybe tyc args of
+#endif
     Nothing -> do
-      tyc' <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
+      (tyc', _) <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
       return (oname, Left tyc')
     Just (assigs, expansion, leftoverVars) -> case leftoverVars of
       (_:_) -> error "transformGHCTyNSElt: unexpected leftover vars"
-      []    -> do let doAssig (tyv, var) = do (tyv', k) <- transformGHCTyVar tyv
+      []    -> do let doAssig (tyv, var) = do ((tyv', k), _) <- transformGHCTyVar tyv
                                               return (tyv', mkHsType (Right (var, k)) [])
                   assigs'      <- mapM doAssig assigs
                   let substMap  = Map.fromList assigs'
@@ -267,7 +333,7 @@ transformGHCTyNSElt import_module tyc = let
 -- convert. The Bool records whether it is a type constructor or an
 -- object constructor. The [Int] tells us how to traverse the parse
 -- tree.
--- 
+--
 -- Note that the 'ways of importing' we construct at this stage might
 -- be superseded by 'better ways' down the line (basically, if the
 -- TyCon itself can be easily imported form somewhere); see
@@ -293,6 +359,13 @@ finalizePreTycLoc i (PreTycLoc n ivt locs)
 -- and an Int (to let us know whether the name is a name of a type
 -- constructor or object constructor).
 
+applyChecksAndStripChecked :: [a -> Bool] -> [a] -> Maybe [a]
+applyChecksAndStripChecked (_:_)  [] = Nothing
+applyChecksAndStripChecked [] args   = Just args
+applyChecksAndStripChecked (chk:chks) (arg:args) = case chk arg of
+  True  -> applyChecksAndStripChecked chks args
+  False -> Nothing
+
 transformGHCType :: Text -> Bool -> GHC.Type -> Maybe HsType
 transformGHCType n ivt = transformGHCType' (PreTycLoc n ivt []). GHCType.expandTypeSynonyms
 
@@ -303,16 +376,19 @@ transformGHCType' locSoFar typ
       (Just c, rest') -> transformGHCType' locSoFar rest'
       (Nothing, _)    -> case GHCType.splitTyConApp_maybe rest of
         Just (tyc, args) -> do
-          unpackGHCKind $ GHCType.typeKind rest -- check result type is of a kind we support
-                                                -- (lifted, etc.)
-          args' <- transformGHCTypes locSoFar args
-          tyc'  <- transformGHCTyc (finalizePreTycLoc (length args) locSoFar) tyc
+          (kind', _)      <- dePolyGHCKind $ GHCType.typeKind rest
+          unpackSimpleGHCKind kind'  -- check result type is of a kind we support
+                                     -- (lifted, etc.)
+          (tyc', checks)  <- transformGHCTyc (finalizePreTycLoc (length args) locSoFar) tyc
+          args_remaining  <- applyChecksAndStripChecked checks args
+          args'           <- transformGHCTypes locSoFar args_remaining
           return $ mkHsType (Left tyc') args'
         Nothing          ->
           let (head, args) = GHCType.splitAppTys rest in case GHCType.getTyVar_maybe head of
             Just tyv        -> do
-              tyv'  <- transformGHCTyVar tyv
-              args' <- transformGHCTypes locSoFar args
+              (tyv', checks)  <- transformGHCTyVar tyv
+              args_remaining  <- applyChecksAndStripChecked checks args
+              args'           <- transformGHCTypes locSoFar args_remaining
               return $ mkHsType (Right tyv') args'
             Nothing         -> Nothing
 
@@ -330,21 +406,27 @@ transformGHCTypes (PreTycLoc mn on sf) tys = let
 -- @Kind@ is too complicated (e.g. if it involves the kind of unboxed
 -- types).
 
-transformGHCTyVar :: GHC.TyVar -> Maybe (Var, Kind)
+transformGHCTyVar :: GHC.TyVar -> Maybe ((Var, Kind), [GHC.Type -> Bool])
 transformGHCTyVar tyv = do
-  k     <- unpackGHCKind $ GHCVar.tyVarKind tyv
+  (k', argChecks) <- dePolyGHCKind $ GHCVar.tyVarKind tyv
+  k''             <- unpackSimpleGHCKind k'
   let n  = Var . T.pack . GHCOccName.occNameString . GHC.getOccName $ GHCVar.tyVarName tyv
-  return (n, k)
+  return ((n, k''), argChecks)
 
 -- | Split constraints off of a GHC Type.
 
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
+#if __GLASGOW_HASKELL__ >= 800
+  Just (src, dest) -> if GHCKind.isConstraintKind (GHCType.typeKind src)
+                         then (Just src, dest) else (Nothing, ty)
+#else
   Just (src, dest) -> case GHCType.splitTyConApp_maybe (GHCType.typeKind src) of
     Nothing -> (Nothing, ty)
     Just (tyc, _) -> if tyc == GHCType.constraintKindTyCon
                      then (Just src, dest) else (Nothing, ty)
+#endif
 
 -- | Transform a GHC 'id' (basically, an object namespace thing that
 -- isn't a data constructor) into a (<name>, PreObj) pair.
@@ -500,7 +582,7 @@ createModule sess (preobjs, tynselts) = do
 -- importing some type alias or object, and then spelunking thorough
 -- its parse tree. In most cases, this is much too complicated---the
 -- TyCon in question will just be importable from some easy-to-find
--- module, and we should just import it. 
+-- module, and we should just import it.
 
 -- This next section of code handles coming up with a good list of
 -- modules where we think we might be able to find a given TyCon as
@@ -628,7 +710,11 @@ accessBasics :: GhcMonad.Session -> PythonM (HashMap Text HsObj)
 accessBasics sess = do
   let evalToPreObj :: (String, String) -> GhcMonad.Ghc (Maybe (Text, PreObj))
       evalToPreObj (name, expr) = do
+#if __GLASGOW_HASKELL__ >= 802
+        exprTy <- GHC.exprType GHC.TM_Inst expr
+#else
         exprTy <- GHC.exprType expr
+#endif
         return $ do
           hst <- transformGHCType (T.pack "") False exprTy
           return (T.pack name, (T.pack expr, hst))
@@ -686,7 +772,11 @@ importSrcModules sess paths = do
                        GHCHscTypes.targetId = GHCHscTypes.TargetFile (T.unpack path) Nothing,
                        GHCHscTypes.targetAllowObjCode = True,
                        GHCHscTypes.targetContents     = Nothing}             | path <- paths]
+#if __GLASGOW_HASKELL__ >= 804
+    moduleGraph <- liftM GHCHscTypes.mgModSummaries $ GHC.depanal [] True
+#else
     moduleGraph <- GHC.depanal [] True
+#endif
     curiis      <- GHC.getContext
     loadOK      <- GHC.load GHC.LoadAllTargets
     GHC.setContext curiis

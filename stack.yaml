@@ -1,0 +1,7 @@
+
+resolver: lts-6.35
+packages:
+- .
+
+arch: i386
+# arch: x86_64

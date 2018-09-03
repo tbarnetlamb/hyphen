@@ -44,11 +44,11 @@ To tell `build-extn.py` to attempt a dynamic build, run with the
 `--dynamic` flag. To attempt static, run with `--static`. If neither
 flag is provided, we attempt static on win32 and dynamic elsewhere.
 
-So far, it sounds like dynamic buulding is not only the Right Thing,
+So far, it sounds like dynamic building is not only the Right Thing,
 but also should be easy to do (except on poor windows). The reason
 it's actually a bit nontrivial is that the Haskell platform doesn't
 compile dynamic versions of libraries by default. So you need to build
-various standard modules (e.g. `Data.Text` in dynamic form.) Worse,
+various standard modules (e.g. `Data.Text`) in dynamic form. Worse,
 cabal is a little bit dumb about this. If you tell it to build a
 module with dynamic goodness enabled, but it's already been built
 without, then it won't build anything (because the module 'has already

@@ -5,7 +5,10 @@
 
 #include "Hyphen_stub.h"
 
+#if __GLASGOW_HASKELL__ >= 804
+#else
 extern void __stginit_Hyphen ( void );
+#endif
 
 #include "structmember.h"
 
@@ -1379,7 +1382,10 @@ PyInit_hslowlevel(void)
   haskell_siginthandler = PyOS_getsig(SIGINT);
   PyOS_setsig(SIGINT, python_siginthandler);
 #endif
+#if __GLASGOW_HASKELL__ >= 804
+#else
   hs_add_root(__stginit_Hyphen);
+#endif
 
   ghc_srcmodules_loaded = 0;
   if (prepare_GHC_state(&ghc_interpreter_state) == -1)
