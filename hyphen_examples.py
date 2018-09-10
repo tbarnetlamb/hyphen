@@ -117,37 +117,6 @@ RuntimeError: maximum recursion depth exceeded while calling a Python object
 >>> identity_on_Maybe_Text(None)
 <hs.GHC.Base.Nothing object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Nothing'>
 
->>> hs.Test.Example
-<class 'hs.Test.Example'>
->>> type(hs.Test.Example)
-<class 'type'>
->>> hs.Test.ExampleWithInt
-<class 'hs.Test.ExampleWithInt'>
->>> hs.Test.ExampleWithString
-<class 'hs.Test.ExampleWithString'>
->>> hs.Test.ExampleWithString.__bases__
-(<class 'hs.Test.Example'>,)
->>> hs.Test.ExampleWithInt.__bases__
-(<class 'hs.Test.Example'>,)
-
-
->>> hs.Test.ExampleWithInt(1)
-<hs.Test.ExampleWithInt object of Haskell type Test.Example, containing 'ExampleWithInt 1'>
->>> hs.Test.ExampleWithString("hello")
-<hs.Test.ExampleWithString object of Haskell type Test.Example, containing 'ExampleWithString "hello"'>
-
->>> isinstance(hs.Test.ExampleWithInt(1), hs.Test.ExampleWithInt)
-True
->>> isinstance(hs.Test.ExampleWithInt(1), hs.Test.ExampleWithString)
-False
->>> isinstance(hs.Test.ExampleWithInt(1), hs.Test.Example)
-True
->>> type(hs.Test.ExampleWithInt(1))
-<class 'hs.Test.ExampleWithInt'>
-
->>> hs.Test.ExampleWithInt(1)._components
-(1,)
-
 >>> hs.Prelude.LT
 <class 'hs.GHC.Types.LT'>
 >>> hs.Prelude.LT()
