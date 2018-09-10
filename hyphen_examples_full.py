@@ -105,9 +105,10 @@ False
 if __name__ == "__main__":
     import doctest, sys
     (fails1, _) = doctest.testmod()
-    import hyphen.utils, hyphen.marshall_obj_to_hs
+    import hyphen.utils, hyphen.marshall_obj_to_hs, hyphen_examples
          # add other modules here if they have docstrings with tests
     (fails2, _) = doctest.testmod(hyphen.utils)
     (fails3, _) = doctest.testmod(hyphen.marshall_obj_to_hs)
-    if fails1 + fails2 + fails3 > 0:
+    (fails4, _) = doctest.testmod(hyphen_examples)
+    if fails1 + fails2 + fails3 + fails4 > 0:
         sys.exit(1)

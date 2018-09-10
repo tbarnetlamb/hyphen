@@ -119,7 +119,7 @@ objects we've been calling so far.)
 
     >>> my_func = hs.Prelude.const(4)
     >>> my_func
-	<hs.GHC.Prim.HsFunObj object of Haskell type b_0 -> GHC.Integer.Type.Integer>
+	<hyphen.HsFunObj object of Haskell type b_0 -> GHC.Integer.Type.Integer>
 	>>> my_func('Hello')
 	4
 
@@ -137,7 +137,7 @@ actually perform the action by calling .act on them. This returns
 whatever the return type of the action might be.
 
     >>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it
-	<hs.GHC.Types.HsFunObj object of Haskell type GHC.Types.IO ()>
+	<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
 	>>> hs.Prelude.putStrLn("Test").act()
 	Test
 	<hs.GHC.Tuple.() object of Haskell type (), containing '()'>
@@ -244,9 +244,9 @@ This is not foolproof however; for instance, we get an error in the following ca
 	Traceback (most recent call last):
 	...
 	TypeError: Incompatible types: cannot resolve object of type
-	a -> a -> a
+	    a -> a -> a
 	to type
-	GHC.Integer.Type.Integer -> Data.Complex.Complex GHC.Types.Float -> a
+	    GHC.Integer.Type.Integer -> Data.Complex.Complex GHC.Types.Float -> a
 
 Before we close this section, we'll cover two other behaviors of the
 marshalling code that are important or useful.
@@ -270,14 +270,14 @@ force its type to be `Int -> IO Text -> IO [Text]` (see the section on
 types below for more on this), then play with it as follows:
 
 	>>> hs.Prelude.replicate
-	<hs.GHC.Prim.HsFunObj object of Haskell type GHC.Types.Int -> a -> [a]>
+	<hyphen.HsFunObj object of Haskell type GHC.Types.Int -> a -> [a]>
 	>>> specialized_repl = hs.Prelude.replicate.subst(a=hs.Prelude.IO(hs.Data.Text.Text()))
 	>>> specialized_repl
-	<hs.GHC.Prim.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.IO Data.Text.Internal.Text -> [GHC.Types.IO Data.Text.Internal.Text]>
+	<hyphen.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.IO Data.Text.Internal.Text -> [GHC.Types.IO Data.Text.Internal.Text]>
 	>>> specialized_repl(4, (lambda : input()))
 	<hs.GHC.Types.[] object of Haskell type [GHC.Types.IO Data.Text.Internal.Text]>
 	>>> hs.Prelude.sequence(specialized_repl(4, (lambda : input())))
-	<hs.GHC.Types.HsFunObj object of Haskell type GHC.Types.IO [Data.Text.Internal.Text]>
+	<hs.GHC.Types.IO object of Haskell type GHC.Types.IO [Data.Text.Internal.Text]>
 	>>> hs.Prelude.sequence(specialized_repl(4, (lambda : input()))).act()
 	Fee
 	Fi
@@ -300,7 +300,7 @@ For example:
 	>>> import hyphen, hs.Prelude, hs.Data.Maybe, hs.Data.Text
 	>>> identity_on_Maybe_Text = hs.Prelude.id.subst(a=hs.Data.Maybe.Maybe(hs.Data.Text.Text()))
 	>>> identity_on_Maybe_Text
-	<hs.GHC.Prim.HsFunObj object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text -> GHC.Base.Maybe Data.Text.Internal.Text>
+	<hyphen.HsFunObj object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text -> GHC.Base.Maybe Data.Text.Internal.Text>
 	>>> identity_on_Maybe_Text("Hello")
 	<hs.GHC.Base.Just object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Just "Hello"'>
 	>>> identity_on_Maybe_Text(None)
@@ -541,14 +541,6 @@ kind="*->*")`).
 	('Map', 'Data.Map.Base', 'conta_LKCPrTJwOTOLk4OU37YmeN')
 	>>> map1.hstype.tail
 	(hs.GHC.Integer.Integer(), hs.GHC.Integer.Integer())
-	>>> Data.Map.Map('a', 'b')
-	Traceback (most recent call last):
-	File "<stdin>", line 1, in <module>
-	NameError: name 'Data' is not defined
-	>>> hs.Data.Map.Map('a', 'b')
-	Traceback (most recent call last):
-	File "<stdin>", line 1, in <module>
-	AttributeError: 'module' object has no attribute 'Map'
 	>>> import hs.Data.Map
 	>>> hs.Data.Map.Map('a', 'b')
 	hs.Data.Map.Map(hyphen.HsType("a"), hyphen.HsType("b"))
@@ -585,7 +577,7 @@ dictionary mapping variables to strings representing their kinds).
 
     >>> my_hstype = hs.Prelude.id.hstype
 	>>> my_hstype
-	hs.GHC.Prim._['(->)'] (hyphen.HsType("a"), hyphen.HsType("a"))
+	hs.GHC.Prim._['(->)'](hyphen.HsType("a"), hyphen.HsType("a"))
 	>>> str(my_hstype)
 	'<hyphen.HsType object representing a -> a>'
 	>>> my_hstype.fvs
@@ -604,7 +596,7 @@ object to a specific type.
 
     >>> int_identity = hs.Prelude.id.subst(a=hs.Prelude.Int())
 	>>> int_identity
-	<hs.GHC.Prim.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.Int>
+	<hyphen.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.Int>
 	>>> int_identity('Foo')
 	Traceback (most recent call last):
 	...
@@ -612,7 +604,7 @@ object to a specific type.
 	>>> int_identity(1)
 	1
 	>>> hs.Prelude.id.narrow_type(int_identity.hstype)
-	<hs.GHC.Prim.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.Int>
+	<hyphen.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.Int>
 	
 What about exceptions?
 ----------------------
