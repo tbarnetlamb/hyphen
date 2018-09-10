@@ -6,7 +6,6 @@
 module HsType where
 
 --import Debug.Trace
-import Control.Applicative hiding ((<|>))
 import Control.Monad
 import Control.Monad.RWS
 import Control.DeepSeq

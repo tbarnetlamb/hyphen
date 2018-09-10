@@ -8,11 +8,10 @@ module HyphenGHC (createGHCSession, importLibModules, importSrcModules, accessBa
 
 --import Debug.Trace
 import Control.Arrow
-import Control.Applicative hiding ((<|>))
 import Control.Monad
 import Control.Monad.State.Strict
 import Data.IORef
-import Data.Monoid
+import Data.Monoid ()
 import Data.Maybe
 import Data.Either
 import Data.List

@@ -7,7 +7,6 @@ module HyphenUnify (unify) where
 
 import Control.Monad
 import Control.Monad.State.Strict
-import Data.Monoid
 import Data.Set                       (Set)
 import Data.Map.Strict                (Map)
 import qualified Data.Map.Strict      as Map

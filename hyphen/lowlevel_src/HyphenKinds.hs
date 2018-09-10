@@ -5,7 +5,6 @@
 
 module HyphenKinds (Kind(..), simplKnd, kindString, kindFromText) where
 
-import Control.Applicative hiding ((<|>))
 import Control.DeepSeq
 import Data.Hashable
 import Data.List

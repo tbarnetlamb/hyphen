@@ -1131,14 +1131,14 @@ to_haskell_Integer(PyObject *self, PyObject *args)
 	  return NULL;
 	}
       Py_ssize_t buffer_length=-1;
-      char *buffer = PyUnicode_AsUTF8AndSize(hex_rep_string, &buffer_length);
+      const char *buffer = PyUnicode_AsUTF8AndSize(hex_rep_string, &buffer_length);
       if (!buffer || (buffer_length==-1))
 	{
 	  Py_DECREF(hex_rep_string);
 	  return NULL;
 	}
 
-      PyObject *ret = buildHaskellIntegerStr(buffer, (int) buffer_length);
+      PyObject *ret = buildHaskellIntegerStr((char*) buffer, (int) buffer_length);
       Py_DECREF(hex_rep_string);
       return ret;
     }

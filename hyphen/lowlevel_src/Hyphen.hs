@@ -10,7 +10,7 @@ import Control.Monad
 import Control.Monad.Trans.Maybe
 import Control.Monad.State.Strict
 import Control.Exception (
-  SomeException, toException, Exception, assert, AsyncException(..))
+  SomeException, toException, assert, AsyncException(..))
 import Control.Concurrent
 import Control.DeepSeq
 import Data.IORef

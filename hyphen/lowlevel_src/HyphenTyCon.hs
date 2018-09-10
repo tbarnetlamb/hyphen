@@ -7,7 +7,7 @@ module HyphenTyCon where
 
 import Control.Arrow
 import Control.DeepSeq
-import Data.Typeable                  (Typeable, typeRepTyCon, typeOf)
+import Data.Typeable                  (typeRepTyCon, typeOf)
 import Data.Hashable
 import Data.Text                      (Text)
 import Data.Map.Strict                (Map)

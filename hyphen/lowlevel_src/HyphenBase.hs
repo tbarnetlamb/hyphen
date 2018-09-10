@@ -11,7 +11,6 @@ Description : Some simple utility functions and definitions used by Hyphen
 module HyphenBase where
 
 import Control.Arrow
-import Control.Monad.Trans.Error
 import Data.Char
 import Data.Text                     (Text)
 import Data.Map.Strict               (Map)
@@ -59,9 +58,6 @@ newtype ErrMsg = ErrMsg {getErrMsg :: Text} deriving (Eq, Ord, Show)
 -- Arrange that Either ErrMsg is a monad by creating an Error (ErrMsg)
 -- instance.  We also define a 'report' function which raises an error
 -- in this monad.
-
-instance Error (ErrMsg) where
-  strMsg = ErrMsg . T.pack
 
 report = Left . ErrMsg . T.pack :: String -> Either ErrMsg a
 

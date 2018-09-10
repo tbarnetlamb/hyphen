@@ -8,7 +8,6 @@ module HsObjRaw (PolyObjCore(..), HsObj(..), objType, formObjOfType, formObjSimp
                  applyMono, apply, makeMonomorphic, tryMakeMonomorphic, doIO) where
 
 --import Debug.Trace
-import Control.Applicative hiding ((<|>))
 import Control.Arrow
 import Control.Monad
 --import Control.Monad.Trans.Class
