@@ -2,6 +2,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Hyphen () where
 
@@ -10,7 +11,7 @@ import Control.Monad
 import Control.Monad.Trans.Maybe
 import Control.Monad.State.Strict
 import Control.Exception (
-  SomeException, toException, assert, AsyncException(..))
+  SomeException, toException, assert, AsyncException(..), try)
 import Control.Concurrent
 import Control.DeepSeq
 import Data.IORef
@@ -31,6 +32,7 @@ import Foreign.Storable
 import Foreign.Marshal.Alloc
 import Foreign.C.String    (CString, withCString)
 import System.IO.Unsafe    (unsafePerformIO)
+import Debug.Trace
 import qualified Data.Text            as T
 import qualified Data.Map.Strict      as Map
 import qualified Data.Text.Foreign
@@ -45,6 +47,7 @@ import qualified GHC
 import qualified System.Posix.Signals
 #endif
 import qualified System.Mem.Weak
+import System.Mem.Weak (Weak)
 import qualified GhcMonad
 
 import HyphenBase
@@ -124,31 +127,130 @@ readKwargs expected errstr kwargs =
 
 ------------------------------
 
+data PythonReentryAction = PythonReentryAction (forall a. IO a -> IO a)
+
+specialThreadAndSPRS :: IORef (Maybe (Weak ThreadId, PythonReentryAction))
+specialThreadAndSPRS = unsafePerformIO (newIORef Nothing)
+
+atomicReadIORef :: IORef a -> IO a
+atomicReadIORef ior = atomicModifyIORef ior (\ val -> (val, val))
+
+getSpecialThreadAndSPRS :: IO (Maybe (ThreadId, PythonReentryAction))
+getSpecialThreadAndSPRS = do
+  read <- atomicReadIORef specialThreadAndSPRS
+  case read of
+    Nothing           -> return Nothing
+    Just (wthr, sprs) ->
+      do mthr <- System.Mem.Weak.deRefWeak wthr
+         case mthr of
+           Nothing  -> trace "getSpecialThreadAndSPRS: warning: unexpected failure of weak ref" (return Nothing)
+           Just thr -> return $ Just (thr, sprs)
+
+data SpecialThreadStatus = NoSpecialThread | ThisThreadSpecial PythonReentryAction | AnotherThreadSpecial
+
+getSpecialThreadStatus :: IO SpecialThreadStatus
+getSpecialThreadStatus = do
+  readValue <- getSpecialThreadAndSPRS
+  case readValue of
+    Nothing -> return NoSpecialThread
+    Just (thr, sprs) -> do
+      thr' <- myThreadId
+      case thr == thr' of
+         True  -> return $ ThisThreadSpecial sprs
+         False -> return AnotherThreadSpecial
+
+removeThreadLocalSpecialPythonReentrySequence :: IO ()
+removeThreadLocalSpecialPythonReentrySequence = do
+  status <- getSpecialThreadStatus
+  case status of
+    NoSpecialThread      -> error (
+       "removeThreadLocalSpecialPythonReentrySequence: unexpectedly no special thread")
+    AnotherThreadSpecial -> error (
+           "removeThreadLocalSpecialPythonReentrySequence: unexpected special thread")
+    ThisThreadSpecial _  -> writeIORef specialThreadAndSPRS Nothing
+
+installThreadLocalSpecialPythonReentrySequence :: (PythonReentryAction) -> IO ()
+installThreadLocalSpecialPythonReentrySequence sprs = do
+  thr  <- myThreadId
+  wthr <- mkWeakThreadId thr
+  let install Nothing = (Just (wthr, sprs), ())
+      install _       = error (
+        "installThreadLocalSpecialPythonReentrySequence: unexpectedly, there is "
+        ++ "already a special thread")
+  atomicModifyIORef specialThreadAndSPRS install
+
+withThreadLocalSpecialPythonReentrySequence :: PythonReentryAction -> IO b -> IO b
+withThreadLocalSpecialPythonReentrySequence (PythonReentryAction preRaw)
+  = Exception.bracket install (const uninstall) . const
+  where install       = installThreadLocalSpecialPythonReentrySequence reenterPython
+        uninstall     = removeThreadLocalSpecialPythonReentrySequence
+        reenterPython = PythonReentryAction $
+                          Exception.bracket uninstall (const install) . const . preRaw
+
+applyingThreadLocalSpecialPythonReentrySequence :: IO a -> IO a
+applyingThreadLocalSpecialPythonReentrySequence act = do
+  status <- getSpecialThreadStatus
+  case status of
+    NoSpecialThread                              -> act
+    AnotherThreadSpecial                         -> act
+    ThisThreadSpecial (PythonReentryAction sprs) -> sprs act
+
+------------------------------
+
 -- | Acquire the GIL and check python signals, raising and translating
 -- to Haskell any exceptions that are seen to be necessary in the
--- light of the signal state.
+-- light of the signal state. Marked unsafe because it must be called
+-- from a bound thread.
 
-checkPythonSignals :: IO ()
-checkPythonSignals = do
-  acquiringGIL . translatePyExceptionIfAny . treatingAsErr (-1) $ pyErr_CheckSignals
+checkPythonSignalsUnsafe :: IO ()
+checkPythonSignalsUnsafe = do
+  acquiringGILUnsafe . translatePyExceptionIfAny . treatingAsErr (-1) $ pyErr_CheckSignals
   return ()
 
--- | Perform the given IO action, while simultaneously (in a separate
--- thread) keep checking whether any python signal handlers need to
--- run (and if so, ensuring that they do run).
+-- | Perform the given IO action, and simultaneously (in a separate
+-- Haskell thread) keep checking whether any python signal handlers
+-- need to run (and if so, ensuring that they do run).
+
+data SigHandlerThreadInterruptReason a =
+  TimeToCheckSignals |
+  RunThisIOAction (IO ()) | --used to ensure that if we need to
+                            --re-enter Python, we do it from the
+                            --thread we left.
+  AnswerAvailableFromWorkerThread a
+
+
 servicingPySignalHandlers :: forall a. IO a -> IO a
 servicingPySignalHandlers act = do
-  resultMVar <- (newEmptyMVar :: IO (MVar (Maybe (Either SomeException a))))
-  endSync    <- (newEmptyMVar :: IO (MVar ()))
-  workThrd   <- forkFinally (act >>. putMVar endSync ()) (putMVar resultMVar . Just)
+  commMVar <- (newEmptyMVar :: IO (MVar (SigHandlerThreadInterruptReason (Either SomeException a))))
+  endSync  <- (newEmptyMVar :: IO (MVar ()))
+  let work  :: IO a
+      work  =  do answer <- withThreadLocalSpecialPythonReentrySequence
+                    (PythonReentryAction reenterPython) act
+                  putMVar endSync ()
+                  return answer
+
+      reenterPython :: forall b. IO b -> IO b
+      reenterPython reentryAction = do reentryResultMVar <- (newEmptyMVar :: IO (MVar (Either SomeException b)))
+                                       let actionForOtherThread = putMVar reentryResultMVar =<< try reentryAction
+                                       putMVar commMVar $ RunThisIOAction actionForOtherThread
+                                       reentryResult <- takeMVar reentryResultMVar
+                                       either Exception.throwIO return reentryResult
+
+  workThrd <- forkFinally work (putMVar commMVar . AnswerAvailableFromWorkerThread)
+
   let loop :: IO (Either SomeException a)
-      loop = do forkIO $ (threadDelay 50 >> tryPutMVar resultMVar Nothing >> return ())
-                mresult <- takeMVar resultMVar
-                case mresult of
-                  Just result -> return result
-                  Nothing     ->
-                    do Exception.catch checkPythonSignals processException
-                       loop
+      loop  = do timeKeeper <- forkIO $ (threadDelay 50 >> putMVar commMVar TimeToCheckSignals >> return ())
+                 loop1 timeKeeper
+      loop1 timeKeeper
+            = do mresult    <- takeMVar commMVar
+                 case mresult of
+                   AnswerAvailableFromWorkerThread result -> do killThread timeKeeper
+                                                                return result
+                   RunThisIOAction action                 -> do action
+                                                                loop1 timeKeeper
+                   TimeToCheckSignals ->
+                     do Exception.catch checkPythonSignalsUnsafe processException
+                        loop
 
       processException :: SomeException -> IO ()
       processException ex =
@@ -157,10 +259,8 @@ servicingPySignalHandlers act = do
              True  -> throwTo workThrd ex -- succeeded; other thread will wait for us to
                                           -- interrupt it
              False -> Exception.throwIO ex
-  result <- loop
-  case result of
-    Left  ex  -> Exception.throwIO ex
-    Right ans -> return ans
+  result   <- loop
+  either Exception.throwIO return result
 
 #if !defined(mingw32_HOST_OS)
 -- | Carry out the provided IO action, switching from the currently
@@ -195,21 +295,24 @@ servicingPySignalHandlers act = do
 -- later processes it. But it's easier this way because Python exposes
 -- the functionality to explicitly check the flag, so we just do so
 -- immediately after we've installed the Haskell signal handler.)
+-- MUST BE CALLED FROM A BOUND THREAD.
 
 catchingCtrlC :: IO a -> IO a
-catchingCtrlC = Exception.bracket before after . const
-  where before       = do main_thread_id <- myThreadId
-                          weak_tid <- mkWeakThreadId main_thread_id
-                          atomicModifyIORef threadToInterruptStack $
-                            \lst -> ((weak_tid:lst), ())
-                          c_installHaskellCtrlCHandler >>. checkPythonSignals
-        after count1 = do count2 <- c_reinstallPythonCtrlCHandler
-                          when (count1 /= count2) $ threadDelay 1000
-                          atomicModifyIORef threadToInterruptStack $
-                            \lst -> (drop 1 lst, ())
-
-threadToInterruptStack :: IORef [System.Mem.Weak.Weak ThreadId]
-threadToInterruptStack = unsafePerformIO (newIORef [])
+catchingCtrlC action
+  = do countStore <- (newIORef 0 :: IO (IORef Int) )
+       let toHsHandler   = do installThreadLocalSpecialPythonReentrySequence
+                                $ PythonReentryAction reenterPython
+                              count <- c_installHaskellCtrlCHandler
+                              atomicModifyIORef countStore (\_ -> (count, ()))
+           toPyHandler   = do oldCount <- atomicReadIORef countStore
+                              newCount <- c_reinstallPythonCtrlCHandler
+                              when (oldCount /= newCount) $ threadDelay 1000
+                              removeThreadLocalSpecialPythonReentrySequence
+           reenterPython :: forall b. IO b -> IO b
+           reenterPython = Exception.bracket toPyHandler (const toHsHandler) . const
+       Exception.bracket toHsHandler (const toPyHandler) $ \ () -> do
+         checkPythonSignalsUnsafe
+         action
 
 -- | Set up a Haskell ctrl-C handler, and install it. Used by the C
 -- side, which takes a copy of this exception handler and uses it to
@@ -217,14 +320,10 @@ threadToInterruptStack = unsafePerformIO (newIORef [])
 foreign export ccall setupHaskellCtrlCHandler :: IO ()
 setupHaskellCtrlCHandler = do
   let handler = System.Posix.Signals.Catch $ do
-        tti <- readIORef threadToInterruptStack
-        case tti of
-          []     -> return ()
-          (wk:_) -> do
-            m <- System.Mem.Weak.deRefWeak wk
-            case m of
-              Nothing  -> return ()
-              Just tid -> Exception.throwTo tid (toException UserInterrupt)
+        stetc <- getSpecialThreadAndSPRS
+        case stetc of
+          Nothing        -> return ()
+          Just (tid, _)  -> Exception.throwTo tid (toException UserInterrupt)
   System.Posix.Signals.installHandler System.Posix.Signals.sigINT handler Nothing
   return ()
 #else
@@ -236,17 +335,32 @@ catchingCtrlC = id
 
 -- | Perform the given IO action, bracketing the action with
 -- operations to release and re-acquire the Python Global Interpreter
--- Lock
+-- Lock. (Well, unless the RTS doesn't support OS threads, in which
+-- case Haskell code can't be safely run from more than one thread, so
+-- we'd better hold the GIL all the time we're running any Haskell
+-- code.)
 
 releasingGIL :: IO a -> IO a
-releasingGIL = Exception.bracket pyEval_SaveThread pyEval_RestoreThread . const
+releasingGIL = case rtsSupportsBoundThreads of
+  True  -> Exception.bracket pyEval_SaveThread pyEval_RestoreThread . const
+  False -> id
 
 -- | Perform the given IO action, bracketing the action with
 -- operations to acquire (if not already held) and release (if
--- acquired) the Python Global Interpreter Lock
+-- acquired) the Python Global Interpreter Lock. (Well, unless the RTS
+-- doesn't support OS threads, in which case (see releasingGIL) we
+-- never release the GIL, so don't re-acquire it either.)
 
 acquiringGIL :: IO a -> IO a
-acquiringGIL = Exception.bracket pyGILState_Ensure' pyGILState_Release . const
+acquiringGIL = case rtsSupportsBoundThreads of
+  True  -> runInBoundThread .  acquiringGILUnsafe
+  False -> id
+
+-- | Version of acquiringGIL which is unsafe in that it can only
+-- safely be run from a bound thread.
+
+acquiringGILUnsafe :: IO a -> IO a
+acquiringGILUnsafe = Exception.bracket pyGILState_Ensure' pyGILState_Release . const
   where pyGILState_Ensure' = do st <- pyGILState_Ensure
                                 if (st == nullPtr) then Exception.throwIO HeapOverflow
                                   else return st
@@ -279,9 +393,12 @@ data SignalRule = SignalRuleLazy | SignalRuleHaskell | SignalRulePython  derivin
 -- replaces it with a new IO action that is protected in one or both
 -- of these ways.
 
+
 protectLongRunningOperation :: GILRule -> SignalRule -> IO a -> IO a
-protectLongRunningOperation gilRule sigRule
-  = gilProtection gilRule . sigConversion sigRule
+protectLongRunningOperation gilRule sigRule lro
+  = do isMain <- c_isThisTheMainPythonThread
+       let sigRule' = if isMain then sigRule else SignalRuleLazy
+       gilProtection gilRule . sigConversion sigRule' $ lro
   where gilProtection GILRuleLazy       = id
         gilProtection GILRuleFancy      = releasingGIL
         sigConversion SignalRuleLazy    = id
@@ -429,7 +546,7 @@ unwrapHsTypeChecked errContextMsg val = do
   lift $ unwrapPythonHsType val
 
 -- We continue to define various operations on hstypes...
-  
+
 foreign export ccall hstype_subst           :: PyObj -> PyObj -> PyObj -> IO PyObj
 hstype_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size args
@@ -494,8 +611,6 @@ hsobjraw_new args kwds sptr_loc = liftM (fromMaybe (-1)) . runMaybeT $ do
   lift (
     poke sptr_loc . castStablePtrToPtr =<< newStablePtr =<< unwrapPythonHsObjRaw argpyobj)
   return 0
-
-foreign import ccall c_makeHaskellText :: PyObj -> IO PyObj
 
 -- | It's convenient to have a Haskell function that takes a PyObj
 -- which wraps a python string, and pulls out a Haskell Text
@@ -709,7 +824,7 @@ withHsObjRawOfType ty f gilCode sigCode pyargtuple
       let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
           processObj obj = do protectLro (Exception.evaluate $ force obj)
                               f obj
-      translatingHsExcepts  $ case obj of
+      translatingHsExcepts $ case obj of
         MonoObj ty' ptr ->
           if ty == ty'
           then (treatingAsErr nullPyObj . processObj $ Unsafe.Coerce.unsafeCoerce ptr)
@@ -1026,7 +1141,8 @@ hyphen_wrap_pyfn_impl fn tyPyo arityReq = liftM (fromMaybe nullPyObj) . runMaybe
   --lift $ py_INCREF fn
   fn' <- lift $ newForeignPtr addr_py_DECREF fn
   let callTheFn :: [IO HsObj] -> IO Any
-      callTheFn objs = acquiringGIL . translatePyExceptionIfAny $ do
+      callTheFn objs = applyingThreadLocalSpecialPythonReentrySequence . acquiringGIL
+                       . translatePyExceptionIfAny $ do
         paramTup <- pythonateTuple $ map (
           treatingAsErr nullPyObj . (wrapPythonHsObjRaw =<<)) objs
         pyRes <- treatingAsErr nullPyObj . withForeignPtr fn' $

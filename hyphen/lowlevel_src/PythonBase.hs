@@ -44,6 +44,8 @@ foreign import ccall c_pyValueErr         :: CString -> IO PyObj
 foreign import ccall c_getHsExceptionAttr :: PyObj -> IO PyObj
 foreign import ccall c_installHaskellCtrlCHandler  :: IO Int
 foreign import ccall c_reinstallPythonCtrlCHandler :: IO Int
+foreign import ccall c_makeHaskellText    :: PyObj -> IO PyObj
+foreign import ccall unsafe c_isThisTheMainPythonThread :: IO Bool
 foreign import ccall pyErr_NoMemory       :: IO PyObj
 foreign import ccall pyErr_Fetch          :: Ptr PyObj -> Ptr PyObj -> Ptr PyObj -> IO ()
 foreign import ccall pyErr_NormalizeException
