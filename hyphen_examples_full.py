@@ -102,7 +102,9 @@ False
 ...     assert hs.Test.foo(3) == 4
 """
 
-if __name__ == "__main__":
+import sys
+
+def runtest():
     import doctest, sys
     (fails1, _) = doctest.testmod()
     import hyphen.utils, hyphen.marshall_obj_to_hs, hyphen_examples
@@ -113,3 +115,14 @@ if __name__ == "__main__":
     if fails1 + fails2 + fails3 + fails4 > 0:
         print("Some failures")
         sys.exit(1)
+
+if __name__ == "__main__":
+    import hyphen
+    for GIL in 'GIL_mode_lazy', 'GIL_mode_fancy':
+        for sig in 'signal_mode_lazy', 'signal_mode_haskell', 'signal_mode_python':
+            print("**********************************************")
+            print("* TEST BATCH : " + GIL + " " + sig )
+            print("**********************************************")
+            getattr(hyphen.hslowlevel, 'set_' + GIL)()
+            getattr(hyphen.hslowlevel, 'set_' + sig)()
+            runtest()
