@@ -94,9 +94,18 @@ to type
 >>> hs.Prelude.foldr((lambda x, y: x + y), 0, [1, 2, 3])
 6
 
->> hs.Prelude.foldr((lambda x, y: x + y), 0, range(10000))
-..
-RuntimeError: maximum recursion depth exceeded while calling a Python object
+>>> hs.Prelude.foldr((lambda x, y: x + y), 0, range(60))
+1770
+
+>>> import sys
+>>> old_recursion_limit = sys.getrecursionlimit()
+>>> sys.setrecursionlimit(300)
+>>> try:
+...     hs.Prelude.foldr((lambda x, y: x + y), 0, range(10000))
+... except RuntimeError as e:
+...     print('maximum recursion depth exceeded' in str(e))
+True
+>>> sys.setrecursionlimit(old_recursion_limit)
 
 >>> hs.Prelude.replicate
 <hyphen.HsFunObj object of Haskell type GHC.Types.Int -> a -> [a]>

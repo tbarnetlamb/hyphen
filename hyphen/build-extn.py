@@ -13,8 +13,14 @@ def flatten(args):
 
 def getopts():
     parser = optparse.OptionParser()
-    parser.add_option("-d", "--dynamic", action="store_const", const="dynamic", dest="dyn_or_static")
-    parser.add_option("-s", "--static",  action="store_const", const="static",  dest="dyn_or_static")
+    parser.add_option("-d", "--dynamic",      action="store_const",
+                      const="dynamic",        dest="dyn_or_static")
+    parser.add_option("-s", "--static",       action="store_const",
+                      const="static",         dest="dyn_or_static")
+    parser.add_option("-t", "--threaded",     action="store_const",
+                      const="threaded",     dest="threaded_or_not")
+    parser.add_option("-n", "--not-threaded", action="store_const",
+                      const="not-threaded", dest="threaded_or_not")
 
     opts, args = parser.parse_args()
     assert not args
@@ -24,6 +30,8 @@ def getopts():
             opts.dyn_or_static = 'static'
         else:
             opts.dyn_or_static = 'dynamic'
+    if opts.threaded_or_not is None:
+        opts.threaded_or_not = 'threaded'
 
     return opts
 
@@ -69,8 +77,11 @@ def cygpreppath(path):
 opts       = getopts()
 work_dir   = sys.path[0]
 ghc_ver    = subprocess.check_output(['ghc', '--numeric-version']).decode('ascii')
-HSrts_lib  = {'dynamic' : 'HSrts-ghc' + ghc_ver,
-              'static'  : 'HSrts'              }[opts.dyn_or_static]
+thrd_part  = {'threaded'    : '_thr',
+              'not-threaded' : ''   }[opts.threaded_or_not]
+final_part = {'dynamic' : '-ghc' + ghc_ver,
+              'static'  : ''              }[opts.dyn_or_static]
+HSrts_lib  = 'HSrts' + thrd_part + final_part
 py_include = distutils.sysconfig.get_python_inc()
 py_libdir  = distutils.sysconfig.get_config_var('LIBDIR')
 suffix     = distutils.sysconfig.get_config_var('EXT_SUFFIX')

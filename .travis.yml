@@ -40,3 +40,5 @@ script:
   - ghc -dynamic-too -shared -fPIC Test.hs -no-link
   - python${PY_VER} hyphen/build-extn.py --$BUILD_TYPE
   - python${PY_VER} hyphen_examples_full.py -v
+  - python${PY_VER} hyphen/build-extn.py --$BUILD_TYPE --not-threaded
+  - python${PY_VER} hyphen_examples_full.py -v

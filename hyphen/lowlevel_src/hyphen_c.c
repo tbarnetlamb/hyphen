@@ -20,6 +20,7 @@ static int               gil_mode_selection    = 1;
 static int               sig_mode_selection    = 2;
 static PyOS_sighandler_t haskell_siginthandler = 0;
 static PyOS_sighandler_t python_siginthandler  = 0;
+static PyThreadState    *main_thread_state_ptr = 0;
 static volatile int      signal_count          = 0;
 
 
@@ -147,6 +148,20 @@ void
 py_DECREF(HsPtr obj)
 {
   Py_DECREF(obj);
+}
+
+void
+py_DECREF_with_GIL_acq(HsPtr obj)
+{
+  if (ghc_interpreter_state)
+    {
+      PyGILState_STATE gstate;
+      gstate = PyGILState_Ensure();
+
+      Py_DECREF(obj);
+
+      PyGILState_Release(gstate);
+    }
 }
 
 void
@@ -435,6 +450,15 @@ c_reinstallPythonCtrlCHandler()
     }
 #endif
   return signal_count;
+}
+
+HsBool
+c_isThisTheMainPythonThread()
+{
+  /* Note that we must hold the GIL to call this function */
+  PyThreadState  *this_thread_state_ptr = PyThreadState_Get();
+  assert(this_thread_state_ptr != 0);
+  return main_thread_state_ptr == this_thread_state_ptr;
 }
 
 /******************************************************************
@@ -1382,6 +1406,8 @@ PyInit_hslowlevel(void)
   haskell_siginthandler = PyOS_getsig(SIGINT);
   PyOS_setsig(SIGINT, python_siginthandler);
 #endif
+  main_thread_state_ptr = PyThreadState_Get();
+  assert(main_thread_state_ptr != 0);
 #if __GLASGOW_HASKELL__ >= 804
 #else
   hs_add_root(__stginit_Hyphen);
