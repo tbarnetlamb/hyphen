@@ -153,12 +153,15 @@ py_DECREF(HsPtr obj)
 void
 py_DECREF_with_GIL_acq(HsPtr obj)
 {
-  PyGILState_STATE gstate;
-  gstate = PyGILState_Ensure();
+  if (ghc_interpreter_state)
+    {
+      PyGILState_STATE gstate;
+      gstate = PyGILState_Ensure();
 
-  Py_DECREF(obj);
+      Py_DECREF(obj);
 
-  PyGILState_Release(gstate);
+      PyGILState_Release(gstate);
+    }
 }
 
 void

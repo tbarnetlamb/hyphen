@@ -111,4 +111,5 @@ if __name__ == "__main__":
     (fails3, _) = doctest.testmod(hyphen.marshall_obj_to_hs)
     (fails4, _) = doctest.testmod(hyphen_examples)
     if fails1 + fails2 + fails3 + fails4 > 0:
+        print("Some failures")
         sys.exit(1)
