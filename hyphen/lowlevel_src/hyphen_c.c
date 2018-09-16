@@ -422,7 +422,7 @@ static void
 compound_sigint_handler(int signum)
 { /* Our private version of the Haskell signal handler */
   ++signal_count;
-  if (haskell_siginthandler)
+  if (haskell_siginthandler && ghc_interpreter_state)
     {
       (*haskell_siginthandler)(signum);
     }
