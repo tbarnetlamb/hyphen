@@ -52,6 +52,3 @@ script:
   - # Now test everything that still makes sense without the threaded Haskell rts
   - python${PY_VER} hyphen/build-extn.py --$BUILD_TYPE --not-threaded
   - python${PY_VER} hyphen_examples_full.py
-  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py python 40 0 33
-  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py haskell 40 0 33
-  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py lazy 40 31 100
