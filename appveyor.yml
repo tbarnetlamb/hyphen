@@ -89,6 +89,8 @@ test_script:
 - stack %STACK_FLAGS% exec -- ghc --version
 - stack %STACK_FLAGS% exec -- python --version
 - stack %STACK_FLAGS% exec -- python hyphen\build-extn.py
-- stack %STACK_FLAGS% exec -- python hyphen_examples_full.py -v
+- stack %STACK_FLAGS% exec -- python hyphen_examples_full.py
+- stack %STACK_FLAGS% exec -- python test_tools/test_GIL_release.py fancy 5 5 5 12
+- stack %STACK_FLAGS% exec -- python test_tools/test_GIL_release.py lazy 5 5 24 100
 - stack %STACK_FLAGS% exec -- python hyphen\build-extn.py --not-threaded
-- stack %STACK_FLAGS% exec -- python hyphen_examples_full.py -v
+- stack %STACK_FLAGS% exec -- python hyphen_examples_full.py

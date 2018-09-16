@@ -39,6 +39,19 @@ script:
   - ghc --version
   - ghc -dynamic-too -shared -fPIC Test.hs -no-link
   - python${PY_VER} hyphen/build-extn.py --$BUILD_TYPE
-  - python${PY_VER} hyphen_examples_full.py -v
+  - python${PY_VER} hyphen_examples_full.py
+  - # Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py python 30 0 32
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py haskell 30 0 32
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py lazy 20 11 100
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_ei_with_nuisance_threads.py python 5 20 0 32
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_ei_with_nuisance_threads.py haskell 5 20 0 32
+  - # Test that releasing the GIL works (and that we get the expected behavior with it disabled)
+  - python${PY_VER} test_tools/test_GIL_release.py fancy 5 5 5 12
+  - python${PY_VER} test_tools/test_GIL_release.py lazy 5 5 24 100
+  - # Now test everything that still makes sense without the threaded Haskell rts
   - python${PY_VER} hyphen/build-extn.py --$BUILD_TYPE --not-threaded
-  - python${PY_VER} hyphen_examples_full.py -v
+  - python${PY_VER} hyphen_examples_full.py
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py python 30 0 32
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py haskell 30 0 32
+  - python${PY_VER} test_tools/interrupting_after.py 30 python${PY_VER} test_tools/test_expecting_interruption.py lazy 20 11 100
