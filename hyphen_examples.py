@@ -49,16 +49,20 @@ This file contains all the examples from README.md as doctests.
 >>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it
 <hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
 
->>> import sys
->>> if sys.platform != 'linux':
-...     import hyphen
-...     hyphen.find_and_load_haskell_source()
-...     from hs.Test import Test
-...     my_test_obj = Test(3)
-...     assert repr(my_test_obj) == "<hs.Test.Test object of Haskell type Test.Test, containing 'Test 3'>"
-...     assert my_test_obj.extract_number() == 3
-...     assert my_test_obj.make_sum(4) == 7
-...     assert my_test_obj[5] == 8
+>>> import hyphen
+>>> hyphen.find_and_load_haskell_source()
+>>> from hs.Test import Test
+>>> my_test_obj = Test(3)
+>>> my_test_obj
+<hs.Test.Test object of Haskell type Test.Test, containing 'Test 3'>
+>>> my_test_obj.extract_number # doctest: +ELLIPSIS
+<bound method ... of <hs.Test.Test object of Haskell type Test.Test, containing 'Test 3'>>
+>>> my_test_obj.extract_number()
+3
+>>> my_test_obj.make_sum(4)
+7
+>>> my_test_obj[5]
+8
 
 >>> import hyphen, hs.Prelude, hs.Data.Text
 >>> hs.Prelude.drop(6, "Hello world")   # Python string -> Haskell String
@@ -125,6 +129,37 @@ True
 <hs.GHC.Base.Just object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Just "Hello"'>
 >>> identity_on_Maybe_Text(None)
 <hs.GHC.Base.Nothing object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Nothing'>
+
+>>> hs.Test.Example
+<class 'hs.Test.Example'>
+>>> type(hs.Test.Example)
+<class 'type'>
+>>> hs.Test.ExampleWithInt
+<class 'hs.Test.ExampleWithInt'>
+>>> hs.Test.ExampleWithString
+<class 'hs.Test.ExampleWithString'>
+>>> hs.Test.ExampleWithString.__bases__
+(<class 'hs.Test.Example'>,)
+>>> hs.Test.ExampleWithInt.__bases__
+(<class 'hs.Test.Example'>,)
+
+
+>>> hs.Test.ExampleWithInt(1)
+<hs.Test.ExampleWithInt object of Haskell type Test.Example, containing 'ExampleWithInt 1'>
+>>> hs.Test.ExampleWithString("hello")
+<hs.Test.ExampleWithString object of Haskell type Test.Example, containing 'ExampleWithString "hello"'>
+
+>>> isinstance(hs.Test.ExampleWithInt(1), hs.Test.ExampleWithInt)
+True
+>>> isinstance(hs.Test.ExampleWithInt(1), hs.Test.ExampleWithString)
+False
+>>> isinstance(hs.Test.ExampleWithInt(1), hs.Test.Example)
+True
+>>> type(hs.Test.ExampleWithInt(1))
+<class 'hs.Test.ExampleWithInt'>
+
+>>> hs.Test.ExampleWithInt(1)._components
+(1,)
 
 >>> hs.Prelude.LT
 <class 'hs.GHC.Types.LT'>
