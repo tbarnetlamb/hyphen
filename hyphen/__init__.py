@@ -11,7 +11,10 @@ def modified_dlopenflags(dlopenflags):
     finally:
         sys.setdlopenflags(old_dlopenflags)
 
-with modified_dlopenflags(os.RTLD_NOW | os.RTLD_GLOBAL):
+if os.name == 'posix':
+    with modified_dlopenflags(os.RTLD_NOW | os.RTLD_GLOBAL):
+        import hyphen.hslowlevel as hslowlevel
+else:
     import hyphen.hslowlevel     as hslowlevel
 import hyphen.caches             as caches
 caches.precache_modules([
