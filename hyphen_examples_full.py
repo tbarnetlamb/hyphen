@@ -94,12 +94,12 @@ True
 >>> 3 in myset
 False
 
->>> if sys.platform != 'linux':
-...     # The following test seems to fail on linux because of an apparent ghc bug
-...     hyphen.find_and_load_haskell_source()
-...     import hs.Test
-...     assert repr( hs.Test.Test) == "<class 'hs.Test.Test'>"
-...     assert hs.Test.foo(3) == 4
+>>> hyphen.find_and_load_haskell_source()
+>>> import hs.Test
+>>> hs.Test.Test
+<class 'hs.Test.Test'>
+>>> hs.Test.foo(3)
+4
 """
 
 import sys

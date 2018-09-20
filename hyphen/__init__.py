@@ -1,6 +1,18 @@
 from __future__ import absolute_import
 
-import hyphen.hslowlevel         as hslowlevel
+import sys, os, contextlib
+
+@contextlib.contextmanager
+def modified_dlopenflags(dlopenflags):
+    try:
+        old_dlopenflags = sys.getdlopenflags()
+        sys.setdlopenflags(dlopenflags)
+        yield
+    finally:
+        sys.setdlopenflags(old_dlopenflags)
+
+with modified_dlopenflags(os.RTLD_NOW | os.RTLD_GLOBAL):
+    import hyphen.hslowlevel     as hslowlevel
 import hyphen.caches             as caches
 caches.precache_modules([
     "Prelude", "Data.Complex", "Data.Maybe", "Data.Set", "Data.Map", "Data.Map.Strict",
