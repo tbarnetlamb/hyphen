@@ -69,10 +69,10 @@ foreign import ccall safe   "&py_DECREF_with_GIL_acq" addr_py_DECREF :: FunPtr (
 foreign import ccall safe   py_DECREF            :: PyObj -> IO ()
 foreign import ccall unsafe py_INCREF            :: PyObj -> IO ()
 foreign import ccall safe   pyModule_AddObject   :: PyObj -> CString -> PyObj -> IO Int
-foreign import ccall unsafe pyGILState_Ensure    :: IO (Ptr ())
-foreign import ccall unsafe pyGILState_Release   :: Ptr () -> IO ()
-foreign import ccall unsafe pyEval_SaveThread    :: IO (Ptr ())
-foreign import ccall unsafe pyEval_RestoreThread :: Ptr () -> IO ()
+foreign import ccall safe   pyGILState_Ensure    :: IO (Ptr ())
+foreign import ccall safe   pyGILState_Release   :: Ptr () -> IO ()
+foreign import ccall safe   pyEval_SaveThread    :: IO (Ptr ())
+foreign import ccall safe   pyEval_RestoreThread :: Ptr () -> IO ()
 
 foreign import ccall unsafe exHsException        :: IO PyObj
 foreign import ccall unsafe exKeyboardInterrupt  :: IO PyObj
