@@ -39,52 +39,52 @@ nullPyObj = (nullPtr :: PyObj)
 -- (say) HsPtr and whatever the Python library is using are compatible
 -- types.)
 
-foreign import ccall c_pyTypeErr          :: CString -> IO PyObj
-foreign import ccall c_pyValueErr         :: CString -> IO PyObj
-foreign import ccall c_getHsExceptionAttr :: PyObj -> IO PyObj
-foreign import ccall c_installHaskellCtrlCHandler  :: IO Int
-foreign import ccall c_reinstallPythonCtrlCHandler :: IO Int
-foreign import ccall c_makeHaskellText    :: PyObj -> IO PyObj
+foreign import ccall unsafe c_pyTypeErr          :: CString -> IO PyObj
+foreign import ccall unsafe c_pyValueErr         :: CString -> IO PyObj
+foreign import ccall safe   c_getHsExceptionAttr :: PyObj -> IO PyObj
+foreign import ccall unsafe c_installHaskellCtrlCHandler  :: IO Int
+foreign import ccall unsafe c_reinstallPythonCtrlCHandler :: IO Int
+foreign import ccall safe   c_makeHaskellText    :: PyObj -> IO PyObj
 foreign import ccall unsafe c_isThisTheMainPythonThread :: IO Bool
-foreign import ccall pyErr_NoMemory       :: IO PyObj
-foreign import ccall pyErr_Fetch          :: Ptr PyObj -> Ptr PyObj -> Ptr PyObj -> IO ()
-foreign import ccall pyErr_NormalizeException
+foreign import ccall unsafe pyErr_NoMemory       :: IO PyObj
+foreign import ccall unsafe pyErr_Fetch          :: Ptr PyObj -> Ptr PyObj -> Ptr PyObj -> IO ()
+foreign import ccall safe   pyErr_NormalizeException
                                           :: Ptr PyObj -> Ptr PyObj -> Ptr PyObj -> IO ()
-foreign import ccall pyErr_Restore        :: PyObj -> PyObj -> PyObj -> IO ()
-foreign import ccall pyErr_SetObject      :: PyObj -> PyObj -> IO ()
-foreign import ccall pyErr_CheckSignals   :: IO Int
-foreign import ccall pyTuple_New          :: Int -> IO PyObj
-foreign import ccall pyTuple_GET_ITEM     :: PyObj -> Int -> IO PyObj
-foreign import ccall pyTuple_SET_ITEM     :: PyObj -> Int -> PyObj -> IO ()
-foreign import ccall pyTuple_Size         :: PyObj -> IO Int
-foreign import ccall pyUnicode_Check      :: PyObj -> IO Bool
-foreign import ccall pyCallable_Check     :: PyObj -> IO Bool
-foreign import ccall pyObject_Str         :: PyObj -> IO PyObj
-foreign import ccall pyObject_SetAttr     :: PyObj -> PyObj -> PyObj -> IO Int
-foreign import ccall pyObject_Call        :: PyObj -> PyObj -> PyObj -> IO PyObj
-foreign import ccall pyDict_New           :: IO PyObj
-foreign import ccall pyDict_Next  :: PyObj -> Ptr Int -> Ptr PyObj -> Ptr PyObj -> IO Int
-foreign import ccall pyDict_SetItem       :: PyObj -> PyObj -> PyObj -> IO Int
-foreign import ccall "&py_DECREF_with_GIL_acq" addr_py_DECREF :: FunPtr (PyObj -> IO ())
-foreign import ccall py_DECREF            :: PyObj -> IO ()
-foreign import ccall py_INCREF            :: PyObj -> IO ()
-foreign import ccall pyModule_AddObject   :: PyObj -> CString -> PyObj -> IO Int
-foreign import ccall pyGILState_Ensure    :: IO (Ptr ())
-foreign import ccall pyGILState_Release   :: Ptr () -> IO ()
-foreign import ccall pyEval_SaveThread    :: IO (Ptr ())
-foreign import ccall pyEval_RestoreThread :: Ptr () -> IO ()
+foreign import ccall unsafe pyErr_Restore        :: PyObj -> PyObj -> PyObj -> IO ()
+foreign import ccall safe   pyErr_SetObject      :: PyObj -> PyObj -> IO ()
+foreign import ccall safe   pyErr_CheckSignals   :: IO Int
+foreign import ccall unsafe pyTuple_New          :: Int -> IO PyObj
+foreign import ccall unsafe pyTuple_GET_ITEM     :: PyObj -> Int -> IO PyObj
+foreign import ccall unsafe pyTuple_SET_ITEM     :: PyObj -> Int -> PyObj -> IO ()
+foreign import ccall unsafe pyTuple_Size         :: PyObj -> IO Int
+foreign import ccall unsafe pyUnicode_Check      :: PyObj -> IO Bool
+foreign import ccall unsafe pyCallable_Check     :: PyObj -> IO Bool
+foreign import ccall safe   pyObject_Str         :: PyObj -> IO PyObj
+foreign import ccall safe   pyObject_SetAttr     :: PyObj -> PyObj -> PyObj -> IO Int
+foreign import ccall safe   pyObject_Call        :: PyObj -> PyObj -> PyObj -> IO PyObj
+foreign import ccall unsafe pyDict_New           :: IO PyObj
+foreign import ccall unsafe pyDict_Next  :: PyObj -> Ptr Int -> Ptr PyObj -> Ptr PyObj -> IO Int
+foreign import ccall safe   pyDict_SetItem       :: PyObj -> PyObj -> PyObj -> IO Int -- safe because we need to compute a hash
+foreign import ccall safe   "&py_DECREF_with_GIL_acq" addr_py_DECREF :: FunPtr (PyObj -> IO ())
+foreign import ccall safe   py_DECREF            :: PyObj -> IO ()
+foreign import ccall unsafe py_INCREF            :: PyObj -> IO ()
+foreign import ccall safe   pyModule_AddObject   :: PyObj -> CString -> PyObj -> IO Int
+foreign import ccall safe   pyGILState_Ensure    :: IO (Ptr ())
+foreign import ccall safe   pyGILState_Release   :: Ptr () -> IO ()
+foreign import ccall safe   pyEval_SaveThread    :: IO (Ptr ())
+foreign import ccall safe   pyEval_RestoreThread :: Ptr () -> IO ()
 
-foreign import ccall exHsException        :: IO PyObj
-foreign import ccall exKeyboardInterrupt  :: IO PyObj
-foreign import ccall exOverflowError      :: IO PyObj
-foreign import ccall exZeroDivisionError  :: IO PyObj
-foreign import ccall exFloatingPointError :: IO PyObj
-foreign import ccall exAttributeError     :: IO PyObj
-foreign import ccall exSystemExit         :: IO PyObj
-foreign import ccall exEOFError           :: IO PyObj
+foreign import ccall unsafe exHsException        :: IO PyObj
+foreign import ccall unsafe exKeyboardInterrupt  :: IO PyObj
+foreign import ccall unsafe exOverflowError      :: IO PyObj
+foreign import ccall unsafe exZeroDivisionError  :: IO PyObj
+foreign import ccall unsafe exFloatingPointError :: IO PyObj
+foreign import ccall unsafe exAttributeError     :: IO PyObj
+foreign import ccall unsafe exSystemExit         :: IO PyObj
+foreign import ccall unsafe exEOFError           :: IO PyObj
 
-foreign import ccall py_NotImplemented    :: IO PyObj
-foreign import ccall py_None              :: IO PyObj
+foreign import ccall unsafe py_NotImplemented    :: IO PyObj
+foreign import ccall unsafe py_None              :: IO PyObj
 
 -- | Set a python TypeError Exception with the provided Text
 

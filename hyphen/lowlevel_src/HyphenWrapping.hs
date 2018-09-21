@@ -41,35 +41,36 @@ import HsObjRaw
 -- and its only element is a HsObjRaw (say), then pulling out the
 -- HsObjRaw (this is useful for parsing argument tuples...)
 
-foreign import ccall pyHsObjRaw_Check           :: PyObj -> IO Bool
-foreign import ccall pyHsType_Check             :: PyObj -> IO Bool
-foreign import ccall pyTyCon_Check              :: PyObj -> IO Bool
-foreign import ccall parseTupleToPythonHsObjRaw :: PyObj -> IO PyObj
-foreign import ccall parseTupleToPythonHsType   :: PyObj -> IO PyObj
+foreign import ccall unsafe pyHsObjRaw_Check           :: PyObj -> IO Bool
+foreign import ccall unsafe pyHsType_Check             :: PyObj -> IO Bool
+foreign import ccall unsafe pyTyCon_Check              :: PyObj -> IO Bool
+foreign import ccall unsafe parseTupleToPythonHsObjRaw :: PyObj -> IO PyObj
+foreign import ccall unsafe parseTupleToPythonHsType   :: PyObj -> IO PyObj
 
 formSimpleHsObjRaw :: (Typeable a) => a -> IO PyObj
 formSimpleHsObjRaw = wrapPythonHsObjRaw <=< formObjSimple
 
-foreign import ccall c_unwrapPythonTyCon  :: PyObj -> WStPtr
+foreign import ccall unsafe c_unwrapPythonTyCon  :: PyObj -> WStPtr
 unwrapPythonTyCon  :: PyObj -> IO TyCon
 unwrapPythonTyCon  = deRefStablePtr . castPtrToStablePtr . c_unwrapPythonTyCon
 
-foreign import ccall c_wrapPythonTyCon  :: WStPtr -> IO PyObj
+foreign import ccall unsafe c_wrapPythonTyCon  :: WStPtr -> IO PyObj
 wrapPythonTyCon    :: TyCon  -> IO PyObj
 wrapPythonTyCon    =  c_wrapPythonTyCon . castStablePtrToPtr <=< newStablePtr
 
-foreign import ccall c_unwrapPythonHsType :: PyObj -> WStPtr
+foreign import ccall unsafe c_unwrapPythonHsType :: PyObj -> WStPtr
 unwrapPythonHsType :: PyObj -> IO HsType
 unwrapPythonHsType = deRefStablePtr . castPtrToStablePtr . c_unwrapPythonHsType
 
-foreign import ccall c_wrapPythonHsType  :: WStPtr -> IO PyObj
+foreign import ccall unsafe c_wrapPythonHsType  :: WStPtr -> IO PyObj
 wrapPythonHsType   :: HsType  -> IO PyObj
 wrapPythonHsType   =  c_wrapPythonHsType . castStablePtrToPtr <=< newStablePtr
 
-foreign import ccall c_wrapPythonHsObjRaw  :: WStPtr -> IO PyObj
+foreign import ccall unsafe c_unwrapPythonHsObjRaw :: PyObj -> WStPtr
+unwrapPythonHsObjRaw :: PyObj -> IO HsObj
+unwrapPythonHsObjRaw = deRefStablePtr . castPtrToStablePtr . c_unwrapPythonHsObjRaw
+
+foreign import ccall unsafe c_wrapPythonHsObjRaw  :: WStPtr -> IO PyObj
 wrapPythonHsObjRaw   :: HsObj -> IO PyObj
 wrapPythonHsObjRaw = c_wrapPythonHsObjRaw . castStablePtrToPtr <=< newStablePtr
 
-foreign import ccall c_unwrapPythonHsObjRaw :: PyObj -> WStPtr
-unwrapPythonHsObjRaw :: PyObj -> IO HsObj
-unwrapPythonHsObjRaw = deRefStablePtr . castPtrToStablePtr . c_unwrapPythonHsObjRaw

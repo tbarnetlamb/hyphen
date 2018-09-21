@@ -618,7 +618,7 @@ c_wrapPythonTyCon(HsPtr stablePtr)
 HsBool
 pyTyCon_Check(HsPtr obj)
 {
-  return PyObject_IsInstance(obj, (PyObject*) &TyConType);
+  return PyType_IsSubtype(((PyObject*)obj)->ob_type, &TyConType);
 }
 
 /************************************************************
@@ -789,7 +789,7 @@ parseTupleToPythonHsType(HsPtr args)
 HsBool
 pyHsType_Check(HsPtr obj)
 {
-  return PyObject_IsInstance(obj, (PyObject*) &HsTypeType);
+  return PyType_IsSubtype(((PyObject*)obj)->ob_type, &HsTypeType);
 }
 
 /************************************************************
@@ -900,6 +900,15 @@ static PyTypeObject HsObjRawType = {
   HsObjRaw_new,                 /* tp_new */
 };
 
+/* Given a Stable pointer to a Haskell HsObjRaw, wrap it into a Python
+   HsObjRaw*/
+
+HsPtr
+c_unwrapPythonHsObjRaw(HsPtr self)
+{
+  return ((HsObjRaw*) self)->objStablePtr;
+}
+
 /* Given a pointer to a Python HsObjRaw, extract the stable ptr to the
    underlying Haskell object */
 
@@ -916,15 +925,6 @@ c_wrapPythonHsObjRaw(HsPtr objStablePtr)
   }
 
   return (PyObject *)self;
-}
-
-/* Given a Stable pointer to a Haskell HsObjRaw, wrap it into a Python
-   HsObjRaw*/
-
-HsPtr
-c_unwrapPythonHsObjRaw(HsPtr self)
-{
-  return ((HsObjRaw*) self)->objStablePtr;
 }
 
 /* Given a tuple which consists of a single HsObjRaw, pull out the
@@ -946,7 +946,7 @@ parseTupleToPythonHsObjRaw(HsPtr args)
 HsBool
 pyHsObjRaw_Check(HsPtr obj)
 {
-  return PyObject_IsInstance(obj, (PyObject*) &HsObjRawType);
+  return PyType_IsSubtype(((PyObject*)obj)->ob_type, &HsObjRawType);
 }
 
 /************************************************************

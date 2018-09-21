@@ -45,14 +45,14 @@ import PythonBase
 -- superfluous and putting it in PythonM would make extra work for
 -- ourselves.
 
-foreign import ccall pythonateInt        :: Int        -> IO PyObj
-foreign import ccall pythonateFloat      :: Float      -> IO PyObj
-foreign import ccall pythonateDouble     :: Double     -> IO PyObj
-foreign import ccall pythonateUTF16Ptr   :: Ptr Word16 -> Int -> IO PyObj
-foreign import ccall pythonateBytePtr    :: CString    -> Int -> IO PyObj
-foreign import ccall pythonateTrue       :: IO PyObj
-foreign import ccall pythonateFalse      :: IO PyObj
-foreign import ccall pythonateIntegerFromStr :: Ptr Word16 -> Int -> IO PyObj
+foreign import ccall unsafe pythonateInt        :: Int        -> IO PyObj
+foreign import ccall unsafe pythonateFloat      :: Float      -> IO PyObj
+foreign import ccall unsafe pythonateDouble     :: Double     -> IO PyObj
+foreign import ccall unsafe pythonateUTF16Ptr   :: Ptr Word16 -> Int -> IO PyObj
+foreign import ccall unsafe pythonateBytePtr    :: CString    -> Int -> IO PyObj
+foreign import ccall unsafe pythonateTrue       :: IO PyObj
+foreign import ccall unsafe pythonateFalse      :: IO PyObj
+foreign import ccall unsafe pythonateIntegerFromStr :: Ptr Word16 -> Int -> IO PyObj
 
 pythonateBool         :: Bool    -> IO PyObj
 pythonateBool b       = if b then pythonateTrue else pythonateFalse
