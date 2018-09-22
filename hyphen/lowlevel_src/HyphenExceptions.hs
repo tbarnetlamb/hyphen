@@ -2,9 +2,10 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE RankNTypes #-}
 
 module HyphenExceptions (translatePyException, translatePyExceptionIfAny,
-                         translatingHsExcepts) where
+                         translatingHsExcepts, captureAsyncExceptions) where
 
 import System.IO.Error (isEOFError)
 import System.Exit
@@ -213,3 +214,45 @@ setSystemExit ecode =
   setPyExcRaw exSystemExit [treatingAsErr nullPyObj . pythonateInt $ codeOf ecode] ecode
   where codeOf (ExitFailure i) = i
         codeOf (ExitSuccess)   = 0
+
+
+-- | It is imperative that every function that we foreign export must
+-- handle any exception raised within it before it hits C, since
+-- trying to propagate exceptions out of a foreign exported function
+-- is a fatal error. None of the hyphen-proper code that we run (as
+-- opposed to user haskell code that we call into) will raise
+-- synchronous exceptions, and any exceptions from user Haskell code
+-- are converted to python exceptions well before they hit C. But it
+-- is always possible that an asynchronous exception might be raised
+-- while we're running our hyphen code, so we must handle these (even
+-- though our code runs for only a very short amount of time, so
+-- exceptions are pretty unlikely to hit while it is
+-- running). Moreover, an exception *might* arise even after we've
+-- constructed a python object to return, in which case we will need
+-- to dispose of that python object (so as not to leak memory) and
+-- provide a return value consistent with the fact that we have set
+-- the error indicator.
+
+captureAsyncExceptions :: forall b. (b -> IO b)
+                          -> ((forall a. IO a -> IO a) -> IO b)
+                          -> IO b
+captureAsyncExceptions dispose action = Exception.mask $ \restore -> do
+  result    <- action restore
+  interrupt <- Exception.try Exception.allowInterrupt
+  let setPyExcAndEatFurtherExceptions :: SomeException -> IO ()
+      setPyExcAndEatFurtherExceptions ex = do setPyExc exHsException ex
+                                              eatFurtherExceptions
+      -- Once we have been hit by one async exception, we eat any
+      -- further exceptions that arise between that point and where we
+      -- exit into python. (Raising one async exception in Python is
+      -- good enough!)
+      eatFurtherExceptions :: IO ()
+      eatFurtherExceptions 
+        = do interrupt' <- Exception.try Exception.allowInterrupt
+             case (interrupt' :: Either Exception.SomeException ())  of
+               Left ex   -> eatFurtherExceptions
+               Right ()  -> return ()
+                                  
+  case interrupt of
+    Left ex  -> dispose result >>. setPyExcAndEatFurtherExceptions ex
+    Right () -> return result

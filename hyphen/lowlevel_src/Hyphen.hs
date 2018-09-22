@@ -6,7 +6,6 @@
 
 module Hyphen () where
 
-import Control.Arrow
 import Control.Monad
 import Control.Monad.Trans.Maybe
 import Control.Monad.State.Strict
@@ -317,15 +316,15 @@ catchingCtrlC action
 -- | Set up a Haskell ctrl-C handler, and install it. Used by the C
 -- side, which takes a copy of this exception handler and uses it to
 -- build a 'compound exception handler'.
-foreign export ccall setupHaskellCtrlCHandler :: IO ()
-setupHaskellCtrlCHandler = do
+foreign export ccall setupHaskellCtrlCHandler :: IO Int
+setupHaskellCtrlCHandler = captureAsyncExceptions_IntReturn . const $ do
   let handler = System.Posix.Signals.Catch $ do
         stetc <- getSpecialThreadAndSPRS
         case stetc of
           Nothing        -> return ()
           Just (tid, _)  -> Exception.throwTo tid (toException UserInterrupt)
   System.Posix.Signals.installHandler System.Posix.Signals.sigINT handler Nothing
-  return ()
+  return 0
 #else
 catchingCtrlC :: IO a -> IO a
 catchingCtrlC = id
@@ -407,13 +406,6 @@ protectLongRunningOperation gilRule sigRule lro
 
 ------------------------------
 
--- | Convenience function; given a function of one argument, make it
--- into a function of two arguments which ignores its second argument
--- in the obvious way.
-
-ignoring2nd :: (a -> c) -> (a -> b -> c)
-ignoring2nd fn a _ = fn a
-
 -- | Some standard constants from Python
 
 py_LT = 0 :: Int
@@ -422,6 +414,62 @@ py_EQ = 2 :: Int
 py_NE = 3 :: Int
 py_GT = 4 :: Int
 py_GE = 5 :: Int
+
+-- | captureAsyncException from HyphenExceptions, configured to
+-- appropriately dispose of a PyObj.
+captureAsyncExceptions_PyObjReturn :: ((IO a -> IO a) -> IO PyObj) -> IO PyObj
+captureAsyncExceptions_PyObjReturn = captureAsyncExceptions disposePyObj
+  where disposePyObj obj = do py_DECREF obj
+                              return nullPyObj
+
+captureAsyncExceptions_PyObjReturn_ = captureAsyncExceptions_PyObjReturn . const
+
+-- | captureAsyncException from HyphenExceptions, configured to be
+-- used with functions returning Int (we change the return value to -1
+-- in the case an async exception is raised)
+captureAsyncExceptions_IntReturn   :: ((IO a -> IO a) -> IO Int) -> IO Int
+captureAsyncExceptions_IntReturn   = captureAsyncExceptions (const $ return (-1))
+
+-- | Convenience function; take a function which returns an IO action,
+-- and return another function which returns the same IO action,
+-- except wrapped with captureAsyncExceptionsPyObjReturn
+cae :: (a -> IO PyObj) -> (a -> IO PyObj)
+cae fn a = captureAsyncExceptions_PyObjReturn (const $ fn a)
+
+-- | Like cae, but the function we return takes a second parameter,
+-- which is ignored.
+cae2 :: (a -> IO PyObj) -> (a -> b -> IO PyObj)
+cae2 fn a _ = captureAsyncExceptions_PyObjReturn (const $ fn a)
+
+-- | Like cae, but wrap with captureAsyncExceptions_IntReturn
+caeInt :: (a -> IO Int) -> (a -> IO Int)
+caeInt fn a = captureAsyncExceptions_IntReturn (const $ fn a)
+
+-- | Convenience function; convert action in the PythonM monad which
+-- returns an Int into something in the IO monad,
+-- returning -1 if an exception was set; also handle async
+-- exceptions correctly.
+
+ioIntFromPythonMInt_ :: PythonM Int -> IO Int
+ioIntFromPythonMInt_ = captureAsyncExceptions_IntReturn . const . liftM (fromMaybe (-1)) . runMaybeT
+
+-- | Convenience function; convert action in the PythonM monad which
+-- returns a PyObj into something in the IO monad,
+-- returning null if an exception was set; also handle async
+-- exceptions correctly.
+
+ioPyObjFromPythonMPyObj_ :: PythonM PyObj -> IO PyObj
+ioPyObjFromPythonMPyObj_ = ioPyObjFromPythonMPyObj . const
+
+-- | Convenience function; like ioPyObjFromPythonMPyObj_ but rather
+-- than consuming a simple PythonM PyObj, we consume a function that
+-- returns such a thing, inputting another function that can be used
+-- to restore the async exception masking state.
+ioPyObjFromPythonMPyObj :: ((IO a -> IO a) -> PythonM PyObj) -> IO PyObj
+ioPyObjFromPythonMPyObj makeAction = 
+  captureAsyncExceptions_PyObjReturn (
+    \ restore -> liftM (fromMaybe nullPyObj) . runMaybeT $ makeAction restore)
+
 
 -- | To expose a comparison operation to python, you define a
 -- 'richcmpfunc' which basically takes the type of comparison test we
@@ -438,7 +486,7 @@ py_GE = 5 :: Int
 
 compareVia :: Ord a => (PyObj -> IO Bool) -> (PyObj -> IO a)
               -> PyObj -> PyObj -> Int -> IO PyObj
-compareVia ok unwrap obj1 obj2 cmp_desired = do
+compareVia ok unwrap obj1 obj2 cmp_desired = captureAsyncExceptions_PyObjReturn_ $ do
   ok1 <- ok obj1
   ok2 <- ok obj2
   if not (ok1 && ok2) then py_NotImplemented else
@@ -459,43 +507,43 @@ compareVia ok unwrap obj1 obj2 cmp_desired = do
 -- itself.
 
 foreign export ccall tycon_hash               :: PyObj -> IO Int
-tycon_hash       = return . hash                             <=< unwrapPythonTyCon
+tycon_hash       = caeInt (return . hash                      <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_richcmp            :: PyObj -> PyObj -> Int -> IO PyObj
 tycon_richcmp    = compareVia pyTyCon_Check unwrapPythonTyCon
 
 foreign export ccall tycon_str                :: PyObj -> IO PyObj
-tycon_str        = pythonateText . aug . tyConFullName       <=< unwrapPythonTyCon
+tycon_str        = cae (pythonateText . aug . tyConFullName   <=< unwrapPythonTyCon)
   where aug txt = T.concat [T.pack "<hyphen.TyCon object representing ", txt, T.pack ">"]
 
 foreign export ccall tycon_repr               :: PyObj -> IO PyObj
-tycon_repr       = pythonateText . tyConRepr                 <=< unwrapPythonTyCon
+tycon_repr       = cae (pythonateText . tyConRepr             <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_getname            :: PyObj -> Ptr () -> IO PyObj
-tycon_getname    = ignoring2nd (pythonateText . tyConName    <=< unwrapPythonTyCon)
+tycon_getname    = cae2 (pythonateText . tyConName            <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_getmodule          :: PyObj -> Ptr () -> IO PyObj
-tycon_getmodule  = ignoring2nd (pythonateText . tyConModule  <=< unwrapPythonTyCon)
+tycon_getmodule  = cae2 (pythonateText . tyConModule          <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_get_visible_module :: PyObj -> Ptr () -> IO PyObj
 tycon_get_visible_module =
-                   ignoring2nd (pythonateLoc . tyConLocation <=< unwrapPythonTyCon)
+                   cae2 (pythonateLoc . tyConLocation         <=< unwrapPythonTyCon)
   where pythonateLoc :: TyCLocation -> IO PyObj
         pythonateLoc (InExplicitModuleNamed t) = pythonateText t
         pythonateLoc _                         = py_None
 
 foreign export ccall tycon_getpackage         :: PyObj -> Ptr () -> IO PyObj
-tycon_getpackage = ignoring2nd (pythonateText . tyConPackage <=< unwrapPythonTyCon)
+tycon_getpackage = cae2 (pythonateText . tyConPackage         <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_getarity           :: PyObj -> Ptr () -> IO PyObj
-tycon_getarity   = ignoring2nd (pythonateInt  . tyConArity   <=< unwrapPythonTyCon)
+tycon_getarity   = cae2 (pythonateInt  . tyConArity           <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_get_is_cls         :: PyObj -> Ptr () -> IO PyObj
-tycon_get_is_cls = ignoring2nd (pythonateBool . tyConIsCls   <=< unwrapPythonTyCon)
+tycon_get_is_cls = cae2 (pythonateBool . tyConIsCls           <=< unwrapPythonTyCon)
 
 foreign export ccall tycon_getkind            :: PyObj -> Ptr () -> IO PyObj
-tycon_getkind    = ignoring2nd (
-                   pythonateString . kindString . tyConKind  <=< unwrapPythonTyCon)
+tycon_getkind    = cae2 (
+                   pythonateString . kindString . tyConKind   <=< unwrapPythonTyCon)
 
 -- We now define various operations on hstypes. These are generally
 -- sent directly via the C layer into the method tables (etc.) that we
@@ -504,32 +552,32 @@ tycon_getkind    = ignoring2nd (
 -- itself.
 
 foreign export ccall hstype_hash              :: PyObj -> IO Int
-hstype_hash      = return . hash               <=< unwrapPythonHsType
+hstype_hash      = caeInt (return . hash                        <=< unwrapPythonHsType)
 
 foreign export ccall hstype_richcmp           :: PyObj -> PyObj -> Int -> IO PyObj
 hstype_richcmp   = compareVia pyHsType_Check unwrapPythonHsType
 
 foreign export ccall hstype_str               :: PyObj -> IO PyObj
-hstype_str       = pythonateText . aug . typeName             <=< unwrapPythonHsType
+hstype_str       = cae (pythonateText . aug . typeName          <=< unwrapPythonHsType)
   where aug txt = T.concat [T.pack "<hyphen.HsType object representing ", txt, T.pack ">"]
 
 foreign export ccall hstype_repr              :: PyObj -> IO PyObj
-hstype_repr      = pythonateText . hsTypeRepr                 <=< unwrapPythonHsType
+hstype_repr      = cae (pythonateText . hsTypeRepr              <=< unwrapPythonHsType)
 
 foreign export ccall hstype_gettail           :: PyObj -> Ptr () -> IO PyObj
-hstype_gettail   = ignoring2nd (
+hstype_gettail   = cae2 (
   liftM (fromMaybe nullPyObj) . runMaybeT . pythonateTuple
   . map (treatingAsErr nullPyObj . wrapPythonHsType) . typeTail <=< unwrapPythonHsType)
 
 foreign export ccall hstype_getname           :: PyObj -> Ptr () -> IO PyObj
-hstype_getname   = ignoring2nd (pythonateText . typeName        <=< unwrapPythonHsType)
+hstype_getname   = cae2 (pythonateText . typeName               <=< unwrapPythonHsType)
 
 foreign export ccall hstype_getkind           :: PyObj -> Ptr () -> IO PyObj
-hstype_getkind   = ignoring2nd (
+hstype_getkind   = cae2 (
                       pythonateString . kindString . typeKind   <=< unwrapPythonHsType)
 
 foreign export ccall hstype_getfvs            :: PyObj -> Ptr () -> IO PyObj
-hstype_getfvs    = ignoring2nd (
+hstype_getfvs    = cae2 (
   liftM (fromMaybe nullPyObj) . runMaybeT . pythonateDict
   (treatingAsErr nullPyObj . pythonateText . getVar)
   (treatingAsErr nullPyObj . pythonateString . kindString)
@@ -548,7 +596,7 @@ unwrapHsTypeChecked errContextMsg val = do
 -- We continue to define various operations on hstypes...
 
 foreign export ccall hstype_subst           :: PyObj -> PyObj -> PyObj -> IO PyObj
-hstype_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+hstype_subst self_pyobj args kwargs = ioPyObjFromPythonMPyObj_ $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size args
   check (nArgs == 0) "subst: all arguments must be keyword arguments"
   substs <- Data.Traversable.mapM (unwrapHsTypeChecked "parameter value")
@@ -558,19 +606,20 @@ hstype_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ 
   lift . wrapPythonHsType $ transformType substs self
 
 foreign export ccall hstype_gethead         :: PyObj -> Ptr () -> IO PyObj
-hstype_gethead p _ = do
+hstype_gethead p _ = captureAsyncExceptions_PyObjReturn_ $ do
   hstype <- unwrapPythonHsType p
   case typeHead hstype of
-    Left tyc         -> liftM (fromMaybe nullPyObj) . runMaybeT $ do
+    Left tyc         -> ioPyObjFromPythonMPyObj_ $ do
       pythonateTuple [treatingAsErr nullPyObj . pythonateText . f $ tyc
                      | f <- [tyConName, tyConModule, tyConPackage]]
     Right (Var v, k) -> pythonateText  v
 
 foreign export ccall hstype_gethead_ll      :: PyObj -> Ptr () -> IO PyObj
-hstype_gethead_ll p _ = do hstype <- unwrapPythonHsType p
-                           case typeHead hstype of
-                             Left tyc         -> wrapPythonTyCon tyc
-                             Right (Var v, k) -> pythonateText  v
+hstype_gethead_ll p _ = captureAsyncExceptions_PyObjReturn_ $ do 
+  hstype <- unwrapPythonHsType p
+  case typeHead hstype of
+    Left tyc         -> wrapPythonTyCon tyc
+    Right (Var v, k) -> pythonateText  v
 
 -- We now define various operations on hsobjraws. These are generally
 -- sent directly via the C layer into the method tables (etc.) that we
@@ -579,10 +628,10 @@ hstype_gethead_ll p _ = do hstype <- unwrapPythonHsType p
 -- itself.
 
 foreign export ccall hsobjraw_gethstype     :: PyObj -> Ptr () -> IO PyObj
-hsobjraw_gethstype = ignoring2nd (wrapPythonHsType . objType <=< unwrapPythonHsObjRaw)
+hsobjraw_gethstype = cae2 (wrapPythonHsType . objType <=< unwrapPythonHsObjRaw)
 
 foreign export ccall hsobjraw_narrow        :: PyObj -> PyObj -> IO PyObj
-hsobjraw_narrow pyobj pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+hsobjraw_narrow pyobj pyargtuple = ioPyObjFromPythonMPyObj_ $ do
   pyhstype <- treatingAsErr nullPyObj $ parseTupleToPythonHsType pyargtuple
   ty       <- lift $ unwrapPythonHsType pyhstype
   obj      <- lift $ unwrapPythonHsObjRaw pyobj
@@ -590,7 +639,7 @@ hsobjraw_narrow pyobj pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   lift $ wrapPythonHsObjRaw obj'
 
 foreign export ccall hsobjraw_subst         :: PyObj -> PyObj -> PyObj -> IO PyObj
-hsobjraw_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+hsobjraw_subst self_pyobj args kwargs = ioPyObjFromPythonMPyObj_ $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size args
   check (nArgs == 0) "subst: all arguments must be keyword arguments"
   substs <- Data.Traversable.mapM (unwrapHsTypeChecked "parameter value")
@@ -601,7 +650,7 @@ hsobjraw_subst self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT 
   lift $ wrapPythonHsObjRaw obj'
 
 foreign export ccall hsobjraw_new           :: PyObj -> PyObj -> (Ptr WStPtr) -> IO Int
-hsobjraw_new args kwds sptr_loc = liftM (fromMaybe (-1)) . runMaybeT $ do
+hsobjraw_new args kwds sptr_loc = ioIntFromPythonMInt_ $ do
   kwargs          <- unPythonateKwargs kwds
   nArgs           <- treatingAsErr (-1) $ pyTuple_Size args
   check (nArgs == 1) $ "HsObjRaw.__new__: must have at exactly one argument."
@@ -699,7 +748,7 @@ constructHsTypeFromTycon head_pyobj tail_list_pyobj = do
 -- object. Basically just call constructHsTypeFromTycon above.
 
 foreign export ccall tycon_call             :: PyObj -> PyObj -> PyObj -> IO PyObj
-tycon_call self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+tycon_call self_pyobj args kwargs = ioPyObjFromPythonMPyObj_ $ do
   check (kwargs == nullPyObj)
     "When calling a type constructor, keyword arguments not supported"
   nArgs           <- treatingAsErr (-1) $ pyTuple_Size args
@@ -724,7 +773,7 @@ tycon_call self_pyobj args kwargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
 -- @HsType('a', 'b', kind='*')@.
 
 foreign export ccall hstype_new             :: PyObj -> PyObj -> (Ptr WStPtr) -> IO Int
-hstype_new args kwds sptr_loc = liftM (fromMaybe (-1)) . runMaybeT $ do
+hstype_new args kwds sptr_loc = ioIntFromPythonMInt_ $ do
   kwargs          <- unPythonateKwargs kwds
   nArgs           <- treatingAsErr (-1) $ pyTuple_Size args
   check (nArgs > 0) $ "HsType.__new__: must have at least one argument."
@@ -781,7 +830,7 @@ addSimpleHsTypeObjToModule module_ name ifn = do
 -- Bool and Char. We do this with the following function.
 
 foreign export ccall addSimpleHsTypeObjsToModule :: PyObj -> IO Int
-addSimpleHsTypeObjsToModule module_ = liftM (fromMaybe (-1)) . runMaybeT $ do
+addSimpleHsTypeObjsToModule module_ = ioIntFromPythonMInt_ $ do
   addSimpleHsTypeObjToModule module_ "hstype_Bool"       (id :: Bool       -> Bool)
   addSimpleHsTypeObjToModule module_ "hstype_Char"       (id :: Char       -> Char)
   addSimpleHsTypeObjToModule module_ "hstype_String"     (id :: String     -> String)
@@ -818,10 +867,10 @@ withHsObjRawOfType :: (NFData a) =>
                                   -- work.
                       -> IO PyObj
 withHsObjRawOfType ty f gilCode sigCode pyargtuple
-  = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+  = ioPyObjFromPythonMPyObj $ \ restore -> do
       pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
       obj   <- lift $ unwrapPythonHsObjRaw pyobj
-      let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
+      let protectLro = restore . protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
           processObj obj = do protectLro (Exception.evaluate $ force obj)
                               f obj
       translatingHsExcepts $ case obj of
@@ -880,55 +929,60 @@ from_haskell_Float_impl       = withHsObjRawSimp pythonateFloat
 foreign export ccall from_haskell_Double_impl     :: Int -> Int -> PyObj -> IO PyObj
 from_haskell_Double_impl      = withHsObjRawSimp pythonateDouble
 
+-- | Convenience function: formSimpleHsObjRaw, but wraps its resulting IO action in a captureAsyncExceptions_PyObjReturn
+formSimpleHsObjRaw' :: (Typeable a) => a -> IO PyObj
+formSimpleHsObjRaw' = captureAsyncExceptions_PyObjReturn_ . formSimpleHsObjRaw
+
 -- Now implement the buildHaskellX functions, which are used to create
 -- Python HsObjRaw objects containing particular Haskell values, where
 -- the value is provided in some C-compatile way.
 
 foreign export ccall buildHaskellBool       :: Bool   -> IO PyObj
-buildHaskellBool       = formSimpleHsObjRaw
+buildHaskellBool       = formSimpleHsObjRaw'
 
 foreign export ccall buildHaskellChar       :: Char   -> IO PyObj
-buildHaskellChar       = formSimpleHsObjRaw
+buildHaskellChar       = formSimpleHsObjRaw'
 
 -- String is provided by C caller as Ptr to UTF16 and a length (in double-byte words).
 
 foreign export ccall buildHaskellString     :: Ptr Word16 -> Int -> IO PyObj
-buildHaskellString     = curry (
+buildHaskellString buf len   = captureAsyncExceptions_PyObjReturn_ (
   formSimpleHsObjRaw . T.unpack
-  <=< uncurry Data.Text.Foreign.fromPtr . second (fromInteger . toInteger))
+  =<< Data.Text.Foreign.fromPtr buf (fromInteger . toInteger $ len))
 
 -- String is provided by C caller as Ptr to UTF16 and a length (in double-byte words).
 
 foreign export ccall buildHaskellText       :: Ptr Word16 -> Int -> IO PyObj
-buildHaskellText       = curry (
+buildHaskellText buf len     = captureAsyncExceptions_PyObjReturn_ (
   formSimpleHsObjRaw
-  <=< uncurry Data.Text.Foreign.fromPtr . second (fromInteger . toInteger))
+  =<< Data.Text.Foreign.fromPtr buf (fromInteger . toInteger $ len))
 
 -- String is provided by C caller as Ptr to bytes and a length (in bytes).
 
 foreign export ccall buildHaskellByteString :: CString -> Int -> IO PyObj
-buildHaskellByteString = curry (formSimpleHsObjRaw <=< Data.ByteString.packCStringLen)
+buildHaskellByteString buf len = captureAsyncExceptions_PyObjReturn_ (
+  formSimpleHsObjRaw =<< Data.ByteString.packCStringLen (buf, len))
 
 foreign export ccall buildHaskellInt        :: Int     -> IO PyObj
-buildHaskellInt        = formSimpleHsObjRaw
+buildHaskellInt        = formSimpleHsObjRaw'
 
 foreign export ccall buildHaskellInteger    :: Int     -> IO PyObj
-buildHaskellInteger    = formSimpleHsObjRaw . toInteger
+buildHaskellInteger i  = captureAsyncExceptions_PyObjReturn_ $ formSimpleHsObjRaw (toInteger i)
 
 -- Build Integer from a String containing an ASCII hex encoding of the number.
 
 foreign export ccall buildHaskellIntegerStr :: CString -> Int -> IO PyObj
-buildHaskellIntegerStr = curry (
+buildHaskellIntegerStr buf len = captureAsyncExceptions_PyObjReturn_ (
   formSimpleHsObjRaw . readHex . Data.Text.Encoding.decodeUtf8
-  <=< Data.ByteString.packCStringLen)
+  =<< Data.ByteString.packCStringLen (buf, len))
   where readHex :: Text -> Integer
         readHex = (\ (Right (a, t)) -> a) . Data.Text.Read.hexadecimal
 
 foreign export ccall buildHaskellFloat      :: Float   -> IO PyObj
-buildHaskellFloat    = formSimpleHsObjRaw
+buildHaskellFloat    = formSimpleHsObjRaw'
 
 foreign export ccall buildHaskellDouble     :: Double  -> IO PyObj
-buildHaskellDouble   = formSimpleHsObjRaw
+buildHaskellDouble   = formSimpleHsObjRaw'
 
 ------------------------------------------------------------------
 
@@ -954,7 +1008,7 @@ pythonateModuleRet (objs, tycelts) = pythonateTuple [
 -- us.
 
 foreign export ccall prepare_GHC_state :: Ptr WStPtr -> IO Int
-prepare_GHC_state addr = liftM (fromMaybe (-1)) . runMaybeT $ do
+prepare_GHC_state addr = ioIntFromPythonMInt_ $ do
   session  <- createGHCSession
   stable   <- lift $ newStablePtr session
   lift $ poke addr (castStablePtrToPtr (stable :: StablePtr GhcMonad.Session))
@@ -964,7 +1018,7 @@ prepare_GHC_state addr = liftM (fromMaybe (-1)) . runMaybeT $ do
 -- teardown to clear up the GHC state.
 
 foreign export ccall close_GHC_state :: WStPtr -> IO Int
-close_GHC_state stableSessionPtr = liftM (fromMaybe (-1)) . runMaybeT $ do
+close_GHC_state stableSessionPtr = ioIntFromPythonMInt_ $ do
   sess  <- lift $ deRefStablePtr (
     castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
   translatingHsExcepts . lift $ flip GhcMonad.reflectGhc sess $ do
@@ -974,41 +1028,48 @@ close_GHC_state stableSessionPtr = liftM (fromMaybe (-1)) . runMaybeT $ do
 -- | Fetch the integer which means GILRuleLazy
 
 foreign export ccall get_GIL_mode_lazy          :: IO Int
-get_GIL_mode_lazy       = return $ fromEnum GILRuleLazy
+get_GIL_mode_lazy       = 
+  captureAsyncExceptions_IntReturn . const . return $ fromEnum GILRuleLazy
 
 -- | Fetch the integer which means GILRuleFancy
 
 foreign export ccall get_GIL_mode_fancy         :: IO Int
-get_GIL_mode_fancy      = return $ fromEnum GILRuleFancy
+get_GIL_mode_fancy      = 
+  captureAsyncExceptions_IntReturn . const . return $ fromEnum GILRuleFancy
 
 -- | Convert a GILRule encoded as an integer to a nice Python string
 -- describing the GILRule
 
 foreign export ccall stringify_GIL_mode         :: Int -> IO PyObj
-stringify_GIL_mode      = pythonateString . displayFn . toEnum
+stringify_GIL_mode      = 
+  captureAsyncExceptions_PyObjReturn_ . pythonateString . displayFn . toEnum
   where displayFn GILRuleLazy  = "lazy"
         displayFn GILRuleFancy = "fancy"
 
 -- | Fetch the integer which means SignalRuleLazy
 
 foreign export ccall get_signal_mode_lazy    :: IO Int
-get_signal_mode_lazy    = return $ fromEnum SignalRuleLazy
+get_signal_mode_lazy    = 
+  captureAsyncExceptions_IntReturn . const . return $ fromEnum SignalRuleLazy
 
 -- | Fetch the integer which means SignalRuleHaskell
 
 foreign export ccall get_signal_mode_haskell :: IO Int
-get_signal_mode_haskell = return $ fromEnum SignalRuleHaskell
+get_signal_mode_haskell = 
+  captureAsyncExceptions_IntReturn . const . return $ fromEnum SignalRuleHaskell
 
 -- | Fetch the integer which means SignalRulePython
 
 foreign export ccall get_signal_mode_python  :: IO Int
-get_signal_mode_python  = return $ fromEnum SignalRulePython
+get_signal_mode_python  = 
+  captureAsyncExceptions_IntReturn . const . return $ fromEnum SignalRulePython
 
 -- | Convert a SignalRule encoded as an integer to a nice Python
 -- string describing the SignalRule
 
 foreign export ccall stringify_signal_mode   :: Int -> IO PyObj
-stringify_signal_mode   = pythonateString . displayFn . toEnum
+stringify_signal_mode   = 
+  captureAsyncExceptions_PyObjReturn_ . pythonateString . displayFn . toEnum
   where displayFn SignalRuleLazy    = "lazy"
         displayFn SignalRuleHaskell = "haskell"
         displayFn SignalRulePython  = "python"
@@ -1035,7 +1096,7 @@ hyphen_import_src_core = wrapImport importSrcModules
 
 foreign export ccall hyphen_access_basics_core :: WStPtr -> PyObj -> IO PyObj
 hyphen_access_basics_core stableSessionPtr pyargsTuple =
-  liftM (fromMaybe nullPyObj) . runMaybeT $ do
+  ioPyObjFromPythonMPyObj_ $ do
     sess  <- lift $ deRefStablePtr (
       castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
     nArgs <- treatingAsErr (-1) $ pyTuple_Size pyargsTuple
@@ -1050,7 +1111,7 @@ hyphen_access_basics_core stableSessionPtr pyargsTuple =
 wrapImport :: (GhcMonad.Session -> [Text] ->
                MaybeT IO (HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt)))
               -> WStPtr -> PyObj -> IO PyObj
-wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+wrapImport i_fn stableSessionPtr pyargsTuple = ioPyObjFromPythonMPyObj_ $ do
   sess  <- lift $ deRefStablePtr (
     castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
   nArgs <- treatingAsErr (-1) $ pyTuple_Size pyargsTuple
@@ -1066,7 +1127,7 @@ wrapImport i_fn stableSessionPtr pyargsTuple = liftM (fromMaybe nullPyObj) . run
     =<< (i_fn sess allSrcsList)
 
 foreign export ccall ok_python_identif          :: PyObj -> PyObj -> IO PyObj
-ok_python_identif _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+ok_python_identif _ pyargs = ioPyObjFromPythonMPyObj_ $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size pyargs
   check (nArgs == 1) $ "hyphen.ok_python_identif: expected exactly 1 argument."
   pyobj <- lift $ pyTuple_GET_ITEM pyargs 0
@@ -1075,7 +1136,7 @@ ok_python_identif _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
   treatingAsErr nullPyObj . pythonateBool . okPythonIdentif =<< textFromPythonObj pyobj
 
 foreign export ccall hyphen_apply               :: PyObj -> PyObj -> IO PyObj
-hyphen_apply _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+hyphen_apply _ pyargs = ioPyObjFromPythonMPyObj_ $ do
   nArgs  <- treatingAsErr (-1) $ pyTuple_Size pyargs
   check (nArgs > 1 ) $ "hyphen.apply: must have at least 2 arguments."
   check (nArgs <= 6) $ "hyphen.apply: must have at most 6 arguments."
@@ -1098,12 +1159,12 @@ hyphen_apply _ pyargs = liftM (fromMaybe nullPyObj) . runMaybeT $ do
 -- encoding the GILRule and the SignalRule which are in force
 
 foreign export ccall hyphen_doio_impl           :: Int -> Int -> PyObj -> IO PyObj
-hyphen_doio_impl gilCode sigCode pyargtuple = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+hyphen_doio_impl gilCode sigCode pyargtuple = ioPyObjFromPythonMPyObj $ \ restore -> do
   pyobj <- treatingAsErr nullPyObj $ parseTupleToPythonHsObjRaw pyargtuple
   obj   <- lift $ unwrapPythonHsObjRaw pyobj
   act   <- promoteErr $ doIO obj
   let protectLro = protectLongRunningOperation (toEnum gilCode) (toEnum sigCode)
-  obj'  <- translatingHsExcepts . lift . protectLro $ act
+  obj'  <- translatingHsExcepts . lift . restore . protectLro $ act
   lift $ wrapPythonHsObjRaw obj'
 
 -- The next function is wrapped in C. The C layer parses the argument
@@ -1112,7 +1173,7 @@ hyphen_doio_impl gilCode sigCode pyargtuple = liftM (fromMaybe nullPyObj) . runM
 -- of the Python function we're exposing...)
 
 foreign export ccall hyphen_wrap_pyfn_impl      :: PyObj -> PyObj -> Int -> IO PyObj
-hyphen_wrap_pyfn_impl fn tyPyo arityReq = liftM (fromMaybe nullPyObj) . runMaybeT $ do
+hyphen_wrap_pyfn_impl fn tyPyo arityReq = ioPyObjFromPythonMPyObj_ $ do
   checkM (pyCallable_Check fn) "wrap_pyfn(): first parameter must be callable"
   ty <- lift $ unwrapPythonHsType tyPyo
   check (isMonoType ty)        "wrap_pyfn(): type provided cannot be polymorphic."

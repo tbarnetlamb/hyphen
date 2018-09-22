@@ -1402,7 +1402,13 @@ PyInit_hslowlevel(void)
 #endif
   hs_init(0, 0);
 #if !defined(mingw32_HOST_OS)
-  setupHaskellCtrlCHandler();
+  int failed = setupHaskellCtrlCHandler();
+  if (failed)
+    {
+      PyOS_setsig(SIGINT, python_siginthandler);
+      Py_DECREF(m);
+      return NULL;
+    }
   haskell_siginthandler = PyOS_getsig(SIGINT);
   PyOS_setsig(SIGINT, python_siginthandler);
 #endif
