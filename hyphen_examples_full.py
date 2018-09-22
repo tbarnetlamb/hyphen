@@ -1,5 +1,4 @@
-"""
-Roundtrips
+"""Roundtrips
 ==========
 
 >>> import hyphen, hs.Prelude
@@ -100,6 +99,35 @@ False
 <class 'hs.Test.Test'>
 >>> hs.Test.foo(3)
 4
+
+>>> import hyphen
+>>> import hs.Control.Exception
+>>> IO_returning_emptytup = hs.Control.Exception.allowInterrupt.hstype
+>>> hs.Control.Exception.throwIO(hs.Control.Exception.ThreadKilled()).narrow_type(IO_returning_emptytup)
+<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
+>>> hs.Control.Exception.throwIO(hs.Control.Exception.ThreadKilled()).narrow_type(IO_returning_emptytup).act()
+Traceback (most recent call last):
+...
+hyphen.HsException: thread killed
+>>> try:
+...     hs.Control.Exception.throwIO(hs.Control.Exception.ThreadKilled()).narrow_type(IO_returning_emptytup).act()
+... except hyphen.HsException as e:
+...     print(type(e))
+...     print(type(e.hs_exception))
+...     print(e.hs_exception.hstype)
+...     print(hs.Prelude.show(e.hs_exception))
+<class 'hyphen.HsException'>
+<class 'hsobjraw.HsObjRaw'>
+<hyphen.HsType object representing GHC.Exception.SomeException>
+thread killed
+
+
+Check that when exceptions raised in Haskell propagate through Python
+code and back into Haskell, they are properly re-constituted.
+>>> def raise_test_exception():
+...    hs.Control.Exception.throwIO(hs.Test.TestException(3)).narrow_type(IO_returning_emptytup).act()
+>>> hs.Test.do_and_catch_testexception(raise_test_exception)
+<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
 """
 
 import sys
