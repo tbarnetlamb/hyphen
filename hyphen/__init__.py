@@ -2,6 +2,9 @@ from __future__ import absolute_import
 
 import sys, os, contextlib
 
+if sys.hexversion >> 24 < 3:
+    raise ValueError("Python 3.x required")
+
 @contextlib.contextmanager
 def modified_dlopenflags(dlopenflags):
     try:
