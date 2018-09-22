@@ -39,10 +39,10 @@ import qualified Data.Text.Read
 import qualified Data.Text.Encoding
 import qualified Data.ByteString
 import qualified Data.Traversable
-import qualified Control.Exception as Exception
 import qualified Unsafe.Coerce
 import qualified GHC
 #if !defined(mingw32_HOST_OS)
+import qualified Control.Exception as Exception
 import qualified System.Posix.Signals
 #endif
 import qualified System.Mem.Weak
