@@ -153,7 +153,7 @@ py_DECREF(HsPtr obj)
 void
 py_DECREF_with_GIL_acq(HsPtr obj)
 {
-  if (ghc_interpreter_state)
+  if (obj && ghc_interpreter_state)
     {
       PyGILState_STATE gstate;
       gstate = PyGILState_Ensure();
@@ -1402,7 +1402,13 @@ PyInit_hslowlevel(void)
 #endif
   hs_init(0, 0);
 #if !defined(mingw32_HOST_OS)
-  setupHaskellCtrlCHandler();
+  int failed = setupHaskellCtrlCHandler();
+  if (failed)
+    {
+      PyOS_setsig(SIGINT, python_siginthandler);
+      Py_DECREF(m);
+      return NULL;
+    }
   haskell_siginthandler = PyOS_getsig(SIGINT);
   PyOS_setsig(SIGINT, python_siginthandler);
 #endif

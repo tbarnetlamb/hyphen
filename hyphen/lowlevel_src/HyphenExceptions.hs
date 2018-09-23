@@ -2,9 +2,10 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE RankNTypes #-}
 
 module HyphenExceptions (translatePyException, translatePyExceptionIfAny,
-                         translatingHsExcepts) where
+                         translatingHsExcepts, captureAsyncExceptions) where
 
 import System.IO.Error (isEOFError)
 import System.Exit
@@ -17,6 +18,7 @@ import Control.Exception (
   RecUpdError(..))
 import Data.Typeable (Typeable, typeOf)
 import Foreign.Storable
+import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc
 import qualified Control.Exception as Exception
 import qualified Unsafe.Coerce
@@ -57,7 +59,7 @@ import HyphenWrapping
 -- | A PyException represents a Python exception; it consists of three
 -- PyObjs (type, value, traceback).
 
-data PyException = PyException PyObj PyObj PyObj
+data PyException = PyException (ForeignPtr PyObj_Contents) (ForeignPtr PyObj_Contents) (ForeignPtr PyObj_Contents)
                  deriving (Show, Typeable)
 
 instance Exception PyException
@@ -93,12 +95,32 @@ translatePyException = alloca (
             case hsExceptionObj of
               (MonoObj ty' ptr) -> when (ty' == someExceptionHsType) $ do
                 let ex = Unsafe.Coerce.unsafeCoerce ptr :: SomeException
+                    py_DECREF_whenNotNull pyobj 
+                      = when (pyobj /= nullPyObj) $ py_DECREF pyobj
+                py_DECREF =<< peek store_type
+                py_DECREF_whenNotNull =<< peek store_value
+                py_DECREF_whenNotNull =<< peek store_trace
                 Exception.throwIO ex
               _                            -> return ()
-        Exception.throwIO =<< (
-          return PyException `ap` (peek store_type) `ap` (peek store_value)
-                             `ap` (peek store_trace))
+        type_fp  <- newForeignPtr addr_py_DECREF =<< peek store_type
+        value_fp <- newForeignPtr addr_py_DECREF =<< peek store_value
+        trace_fp <- newForeignPtr addr_py_DECREF =<< peek store_trace
+        Exception.throwIO $ PyException type_fp value_fp trace_fp
         )))
+
+
+pyErr_RestoreWrapped :: PyException -> IO ()
+pyErr_RestoreWrapped (PyException type_fp value_fp trace_fp) 
+  = withForeignPtr type_fp (
+    \ type_obj -> withForeignPtr value_fp (
+      \ value_obj -> withForeignPtr trace_fp (
+        \ trace_obj -> do
+          py_INCREF type_obj
+          when (value_obj /= nullPyObj) $ py_INCREF value_obj
+          when (trace_obj /= nullPyObj) $ py_INCREF trace_obj
+          pyErr_Restore type_obj value_obj trace_obj
+        )))
+
 
 -- | Convert an action in the PythonM monad to an IO action which (a)
 -- carries out the PythonM action, and (b) if it succeeds sucessfully,
@@ -126,7 +148,7 @@ translatingHsExcepts :: PythonM a -> PythonM a
 translatingHsExcepts = MaybeT . flip catches handlers . runMaybeT
   where
     handlers = [
-      Handler (\ (PyException ty val tr) -> pyErr_Restore ty val tr >> return Nothing),
+      Handler (\ e@(PyException _ _ _) -> pyErr_RestoreWrapped e >> return Nothing),
       Handler (\ e -> case e of
                   StackOverflow -> setPyExc exHsException        e
                   HeapOverflow  -> pyErr_NoMemory >> return Nothing
@@ -192,3 +214,45 @@ setSystemExit ecode =
   setPyExcRaw exSystemExit [treatingAsErr nullPyObj . pythonateInt $ codeOf ecode] ecode
   where codeOf (ExitFailure i) = i
         codeOf (ExitSuccess)   = 0
+
+
+-- | It is imperative that every function that we foreign export must
+-- handle any exception raised within it before it hits C, since
+-- trying to propagate exceptions out of a foreign exported function
+-- is a fatal error. None of the hyphen-proper code that we run (as
+-- opposed to user haskell code that we call into) will raise
+-- synchronous exceptions, and any exceptions from user Haskell code
+-- are converted to python exceptions well before they hit C. But it
+-- is always possible that an asynchronous exception might be raised
+-- while we're running our hyphen code, so we must handle these (even
+-- though our code runs for only a very short amount of time, so
+-- exceptions are pretty unlikely to hit while it is
+-- running). Moreover, an exception *might* arise even after we've
+-- constructed a python object to return, in which case we will need
+-- to dispose of that python object (so as not to leak memory) and
+-- provide a return value consistent with the fact that we have set
+-- the error indicator.
+
+captureAsyncExceptions :: forall b. (b -> IO b)
+                          -> ((forall a. IO a -> IO a) -> IO b)
+                          -> IO b
+captureAsyncExceptions dispose action = Exception.mask $ \restore -> do
+  result    <- action restore
+  interrupt <- Exception.try Exception.allowInterrupt
+  let setPyExcAndEatFurtherExceptions :: SomeException -> IO ()
+      setPyExcAndEatFurtherExceptions ex = do setPyExc exHsException ex
+                                              eatFurtherExceptions
+      -- Once we have been hit by one async exception, we eat any
+      -- further exceptions that arise between that point and where we
+      -- exit into python. (Raising one async exception in Python is
+      -- good enough!)
+      eatFurtherExceptions :: IO ()
+      eatFurtherExceptions 
+        = do interrupt' <- Exception.try Exception.allowInterrupt
+             case (interrupt' :: Either Exception.SomeException ())  of
+               Left ex   -> eatFurtherExceptions
+               Right ()  -> return ()
+                                  
+  case interrupt of
+    Left ex  -> dispose result >>. setPyExcAndEatFurtherExceptions ex
+    Right () -> return result
