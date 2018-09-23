@@ -10,7 +10,7 @@ import Control.Monad
 import Control.Monad.Trans.Maybe
 import Control.Monad.State.Strict
 import Control.Exception (
-  SomeException, toException, assert, AsyncException(..), try)
+  SomeException, assert, AsyncException(..), try)
 import Control.Concurrent
 import Control.DeepSeq
 import Data.IORef
@@ -39,10 +39,10 @@ import qualified Data.Text.Read
 import qualified Data.Text.Encoding
 import qualified Data.ByteString
 import qualified Data.Traversable
+import qualified Control.Exception as Exception
 import qualified Unsafe.Coerce
 import qualified GHC
 #if !defined(mingw32_HOST_OS)
-import qualified Control.Exception as Exception
 import qualified System.Posix.Signals
 #endif
 import qualified System.Mem.Weak
@@ -322,7 +322,7 @@ setupHaskellCtrlCHandler = captureAsyncExceptions_IntReturn . const $ do
         stetc <- getSpecialThreadAndSPRS
         case stetc of
           Nothing        -> return ()
-          Just (tid, _)  -> Exception.throwTo tid (toException UserInterrupt)
+          Just (tid, _)  -> Exception.throwTo tid (Exception.toException UserInterrupt)
   System.Posix.Signals.installHandler System.Posix.Signals.sigINT handler Nothing
   return 0
 #else
