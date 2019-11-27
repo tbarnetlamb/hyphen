@@ -9,7 +9,7 @@ fi
 if [[ "$TRAVIS_OS_NAME" == "osx" ]]
 then
     brew install ghc@$OSX_GHC_VER
-    brew link ghc@$OSX_GHC_VER
+    brew link --force ghc@$OSX_GHC_VER
     brew install cabal-install
     cabal update
 fi
