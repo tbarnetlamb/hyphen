@@ -22,12 +22,12 @@ matrix:
       language:  generic
       osx_image: xcode10.3
       env:       BUILD_TYPE="dynamic" OSX_GHC_VER="8.6" PY_VER="3"
-      ghc:       "8.4"
+      ghc:       "8.6"
     - os:        osx
       language:  generic
       osx_image: xcode10.3
       env:       BUILD_TYPE="dynamic" OSX_GHC_VER="8.8" PY_VER="3"
-      ghc:       "8.6"
+      ghc:       "8.8"
     - os:        linux
       env:       BUILD_TYPE="dynamic" PY_VER="3.6"
       ghc:       "8.6"
