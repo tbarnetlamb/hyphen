@@ -7,9 +7,9 @@ language: haskell
 
 ghc:
   - "7.10"
-  - "8.0"
   - "8.2"
   - "8.4"
+  - "8.6"
 
 matrix:
   include:
@@ -23,9 +23,17 @@ matrix:
       osx_image: xcode10.3
       env:       BUILD_TYPE="dynamic" OSX_GHC_VER="8.4" PY_VER="3"
       ghc:       "8.4"
+    - os:        osx
+      language:  generic
+      osx_image: xcode10.3
+      env:       BUILD_TYPE="dynamic" OSX_GHC_VER="8.6" PY_VER="3"
+      ghc:       "8.6"
     - os:        linux
-      env:       BUILD_TYPE="dynamic" PY_VER="3.5"
-      ghc:       "8.2"
+      env:       BUILD_TYPE="dynamic" PY_VER="3.6"
+      ghc:       "8.6"
+    - os:        linux
+      env:       BUILD_TYPE="dynamic" PY_VER="3.7"
+      ghc:       "8.6"
 
 env:
   - BUILD_TYPE="dynamic" PY_VER="3"
