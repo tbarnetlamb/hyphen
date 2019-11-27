@@ -2,6 +2,7 @@
 #include <Python.h>
 #include <stdio.h>
 #include <HsFFI.h>
+#include <signal.h>
 
 #include "Hyphen_stub.h"
 
