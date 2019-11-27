@@ -13,17 +13,19 @@ ghc:
 
 matrix:
   include:
-    - os:       osx
-      language: generic
-      env:      BUILD_TYPE="dynamic" OSX_GHC_VER="8.2" PY_VER="3"
-      ghc:      "8.2"
-    - os:       osx
-      language: generic
-      env:      BUILD_TYPE="dynamic" OSX_GHC_VER="8.4" PY_VER="3"
-      ghc:      "8.4"
-    - os:       linux
-      env:      BUILD_TYPE="dynamic" PY_VER="3.5"
-      ghc:      "8.2"
+    - os:        osx
+      language:  generic
+      osx_image: xcode10.3
+      env:       BUILD_TYPE="dynamic" OSX_GHC_VER="8.2" PY_VER="3"
+      ghc:       "8.2"
+    - os:        osx
+      language:  generic
+      osx_image: xcode10.3
+      env:       BUILD_TYPE="dynamic" OSX_GHC_VER="8.4" PY_VER="3"
+      ghc:       "8.4"
+    - os:        linux
+      env:       BUILD_TYPE="dynamic" PY_VER="3.5"
+      ghc:       "8.2"
 
 env:
   - BUILD_TYPE="dynamic" PY_VER="3"
