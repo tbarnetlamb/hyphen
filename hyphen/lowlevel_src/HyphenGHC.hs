@@ -89,12 +89,13 @@ ourInitGhcMonad mb_top_dir = do
                   GHCDynFlags.defaultDynFlags mySettings llvmc))
 #elif __GLASGOW_HASKELL__ >= 806
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
-  llvmt      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmTargets mb_top_dir
+  llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmConfig mb_top_dir
   dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
-                  GHCDynFlags.defaultDynFlags mySettings llvmt))
+                  GHCDynFlags.defaultDynFlags mySettings llvmc))
 #elif __GLASGOW_HASKELL__ >= 804
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
-  let llvmt = GHCOutputable.panic "tbl: v_unsafeGlobalDynFlags: llvmTargets not initialised"
+  llvmt      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmTargets mb_top_dir
+  --let llvmt = GHCOutputable.panic "tbl: v_unsafeGlobalDynFlags: llvmTargets not initialised"
   dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
                   GHCDynFlags.defaultDynFlags mySettings llvmt))
 #else
