@@ -338,7 +338,7 @@ transformGHCTyNSElt import_module tyc = let
 #endif
     Nothing -> do
       (tyc', _) <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
-      return (oname, Left tyc')
+      return (if tyc' == fnTyCon then T.pack "(->)" else oname, Left tyc')
     Just (assigs, expansion, leftoverVars) -> case leftoverVars of
       (_:_) -> error "transformGHCTyNSElt: unexpected leftover vars"
       []    -> do let doAssig (tyv, var) = do ((tyv', k), _) <- transformGHCTyVar tyv
