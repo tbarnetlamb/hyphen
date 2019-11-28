@@ -281,6 +281,18 @@ readGHCModule name = do
 -- The following functions handle the second stage of importing a
 -- module: converting TyThings into PreObjs and TyNSElts
 
+#if __GLASGOW_HASKELL__ >= 806
+-- The constructor fo the function type was officially renamed in GHC 8.6
+-- We want to undo the effect of this renaming
+newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
+             (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
+normalizeTyCon :: TyCon -> TyCon
+normalizeTyCon tyc = if tyc == newFnTyCon then fnTyCon else tyc
+#else
+normalizeTyCon :: TyCon -> TyCon
+normalizeTyCon = id
+#endif
+
 -- | Convert a Data constructor into a TyCon, if we can. (We can't if,
 -- say, it uses unboxed types or something like that.) We usually
 -- assume that the TyCon can be imported from which it is defined; if
@@ -304,7 +316,8 @@ transformGHCTyc loc tyc = do
       loc'    = fromMaybe (InExplicitModuleNamed mname) loc
   (kind, chks) <- dePolyGHCKind $ GHCTyCon.tyConKind tyc
   kind'        <- unpackSimpleGHCKind kind
-  return $ (mkTyCon pckg mname oname loc' kind' (GHC.isClassTyCon tyc), chks)
+  let rawTyCon = mkTyCon pckg mname oname loc' kind' (GHC.isClassTyCon tyc)
+  return $ (normalizeTyCon rawTyCon, chks)
 
 -- | Convert something from the Type Construct namespace into a
 -- (name, TyNSElt) pair. We need to know the module it was imported
