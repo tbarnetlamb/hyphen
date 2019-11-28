@@ -168,8 +168,13 @@ exceptionalLookups = Map.fromList . map ((T.pack *** T.pack) *** (T.pack *** T.p
 -- | TyCon object representing the Haskell function type constructor @(->)@
 
 fnTyCon :: TyCon
+#if __GLASGOW_HASKELL__ >= 806
+fnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
+          (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
+#else
 fnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "(->)")
           (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
+#endif
 
 -- | TyCon object representing the Haskell type constructor @IO@ for the IO monad
 
