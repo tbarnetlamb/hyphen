@@ -6,6 +6,7 @@
 module HsType where
 
 --import Debug.Trace
+import Control.Arrow
 import Control.Monad
 import Control.Monad.RWS
 import Control.DeepSeq
@@ -17,6 +18,7 @@ import Data.Map.Strict                (Map)
 import Data.HashMap.Strict            (HashMap)
 import qualified Data.Text            as T
 import qualified Data.Map.Strict      as Map
+import qualified Data.HashMap.Strict  as HashMap
 import qualified Data.Traversable
 import qualified Data.Typeable
 
