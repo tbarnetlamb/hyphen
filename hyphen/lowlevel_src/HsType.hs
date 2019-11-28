@@ -10,10 +10,11 @@ import Control.Monad
 import Control.Monad.RWS
 import Control.DeepSeq
 import Data.List
-import Data.Typeable    (TypeRep)
+import Data.Typeable                  (TypeRep)
 import Data.Hashable
-import Data.Text        (Text)
-import Data.Map.Strict  (Map)
+import Data.Text                      (Text)
+import Data.Map.Strict                (Map)
+import Data.HashMap.Strict            (HashMap)
 import qualified Data.Text            as T
 import qualified Data.Map.Strict      as Map
 import qualified Data.Traversable
@@ -408,6 +409,13 @@ makeAVar = do (i0, i1) <- get
 emitConstraint :: (Text, Text) -> TypeForcerM ()
 emitConstraint pair = tell [pair]
 
+typeHeadForcerRenames :: HashMap (Text, Text) Text
+typeHeadForcerRenames = HashMap.fromList $ map ((T.pack *** T.pack) *** T.pack) $ [
+#if __GLASGOW_HASKELL__ >= 808
+  (("GHC.Integer.Type", "Integer"), ("GHC.Integer.Integer"))
+#endif
+]
+
 -- | Make a forcer for a type constructor
 
 makeTypeHeadForcer :: HsType -> TypeForcerM Text
@@ -418,7 +426,9 @@ makeTypeHeadForcer hst = case typeHead hst of
                    tyConLocation = (InExplicitModuleNamed mname)})
     -> if isTupTyCon tyc || isListTyCon tyc || tyc == fnTyCon
          then return oname
-         else return $ T.concat [mname, T.pack ".", oname]
+         else case HashMap.lookup (mname, oname) typeHeadForcerRenames of
+           Nothing     -> return $ T.concat [mname, T.pack ".", oname]
+           Just answer -> return answer
   Left (TyCon {tyConLocation = (ImplicitlyVia tycLocObj False tycLocPath)})
     -> do var <- makeXVar
           pp  <- processPath var tycLocPath
