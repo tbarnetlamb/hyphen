@@ -414,7 +414,7 @@ typeHeadForcerRenames = HashMap.fromList $ map ((T.pack *** T.pack) *** T.pack) 
 #if __GLASGOW_HASKELL__ >= 808
   (("GHC.Integer.Type", "Integer"), ("GHC.Integer.Integer"))
 #endif
-]
+  ]
 
 -- | Make a forcer for a type constructor
 
