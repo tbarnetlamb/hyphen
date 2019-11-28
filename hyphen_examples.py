@@ -123,11 +123,11 @@ True
 
 >>> import hyphen, hs.Prelude, hs.Data.Maybe, hs.Data.Text
 >>> identity_on_Maybe_Text = hs.Prelude.id.subst(a=hs.Data.Maybe.Maybe(hs.Data.Text.Text()))
->>> identity_on_Maybe_Text
+>>> print(str(identity_on_Maybe_Text).replace('GHC.Maybe', 'GHC.Base'))
 <hyphen.HsFunObj object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text -> GHC.Base.Maybe Data.Text.Internal.Text>
->>> identity_on_Maybe_Text("Hello")
+>>> print(str(identity_on_Maybe_Text("Hello")).replace('GHC.Maybe', 'GHC.Base'))
 <hs.GHC.Base.Just object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Just "Hello"'>
->>> identity_on_Maybe_Text(None)
+>>> print(str(identity_on_Maybe_Text(None)).replace('GHC.Maybe', 'GHC.Base'))
 <hs.GHC.Base.Nothing object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Nothing'>
 
 >>> hs.Test.Example
