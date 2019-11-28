@@ -34,6 +34,9 @@ import qualified TysWiredIn  as GHCTysWiredIn
 import qualified StaticFlags as GHCStaticFlags
 #endif
 import qualified SysTools    as GHCSysTools
+#if __GLASGOW_HASKELL__ >= 808
+import qualified SysTools.BaseDir as GHCSysToolsBaseDir
+#endif
 import qualified TyCon       as GHCTyCon
 import qualified OccName     as GHCOccName
 import qualified Module      as GHCModule
@@ -78,14 +81,26 @@ ourInitGhcMonad mb_top_dir = do
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
 #endif
 
+#if __GLASGOW_HASKELL__ >= 808
+  top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
+  llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmConfig top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmc))
+#elif __GLASGOW_HASKELL__ >= 806
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
-#if __GLASGOW_HASKELL__ >= 804
-  let llvmt = GHCOutputable.panic "v_unsafeGlobalDynFlags: llvmTargets not initialised"
-  dflags <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
-              GHCDynFlags.defaultDynFlags mySettings llvmt))
+  llvmt      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmTargets mb_top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmt))
+#elif __GLASGOW_HASKELL__ >= 804
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
+  let llvmt = GHCOutputable.panic "tbl: v_unsafeGlobalDynFlags: llvmTargets not initialised"
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmt))
 #else
-  dflags <- GHCMonadUtils.liftIO
-            $ GHCDynFlags.initDynFlags (GHCDynFlags.defaultDynFlags mySettings)
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
+  dflags     <- GHCMonadUtils.liftIO
+                $ GHCDynFlags.initDynFlags (GHCDynFlags.defaultDynFlags mySettings)
 #endif
 #if __GLASGOW_HASKELL__ >= 802
   liftIO $ GHCDynFlags.setUnsafeGlobalDynFlags dflags
