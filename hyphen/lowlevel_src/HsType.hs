@@ -417,7 +417,7 @@ makeTypeHeadForcer hst = case typeHead hst of
   Left tyc@(TyCon {tyConName      = oname,
                    tyConLocation = (InExplicitModuleNamed mname)})
     -> if isTupTyCon tyc || isListTyCon tyc || tyc == fnTyCon
-         then return oname
+         then return (if tyc == fnTyCon then T.pack "(->)" else oname)
          else return $ T.concat [mname, T.pack ".", oname]
   Left (TyCon {tyConLocation = (ImplicitlyVia tycLocObj False tycLocPath)})
     -> do var <- makeXVar
