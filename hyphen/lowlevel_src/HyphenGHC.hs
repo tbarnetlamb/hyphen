@@ -417,7 +417,7 @@ transformGHCTyVar tyv = do
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
-#if __GLASGOW_HASKELL__ >= 860
+#if __GLASGOW_HASKELL__ >= 806
   Just (src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
                          then (Just src, dest) else (Nothing, ty)
 #elif __GLASGOW_HASKELL__ >= 800
