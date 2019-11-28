@@ -174,7 +174,7 @@ def datacon_tycon(dc):
     constructor A, then we will get back the representation of the
     type constructor X.
 
-    >>> repr(datacon_tycon(hs_Nothing)).replace('GHC.Base', 'Data.Maybe')
+    >>> repr(datacon_tycon(hs_Nothing)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')
     'hs.Data.Maybe.Maybe.hs_tycon'
 
     (Test written in a funny way because Data.Maybe.Maybe moved to GHC.Base, and

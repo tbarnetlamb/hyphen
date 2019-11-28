@@ -34,6 +34,9 @@ import qualified TysWiredIn  as GHCTysWiredIn
 import qualified StaticFlags as GHCStaticFlags
 #endif
 import qualified SysTools    as GHCSysTools
+#if __GLASGOW_HASKELL__ >= 808
+import qualified SysTools.BaseDir as GHCSysToolsBaseDir
+#endif
 import qualified TyCon       as GHCTyCon
 import qualified OccName     as GHCOccName
 import qualified Module      as GHCModule
@@ -78,14 +81,27 @@ ourInitGhcMonad mb_top_dir = do
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
 #endif
 
+#if __GLASGOW_HASKELL__ >= 808
+  top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
+  llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmConfig top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmc))
+#elif __GLASGOW_HASKELL__ >= 806
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
-#if __GLASGOW_HASKELL__ >= 804
-  let llvmt = GHCOutputable.panic "v_unsafeGlobalDynFlags: llvmTargets not initialised"
-  dflags <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
-              GHCDynFlags.defaultDynFlags mySettings llvmt))
+  llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmConfig mb_top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmc))
+#elif __GLASGOW_HASKELL__ >= 804
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
+  llvmt      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmTargets mb_top_dir
+  --let llvmt = GHCOutputable.panic "tbl: v_unsafeGlobalDynFlags: llvmTargets not initialised"
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmt))
 #else
-  dflags <- GHCMonadUtils.liftIO
-            $ GHCDynFlags.initDynFlags (GHCDynFlags.defaultDynFlags mySettings)
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools mb_top_dir
+  dflags     <- GHCMonadUtils.liftIO
+                $ GHCDynFlags.initDynFlags (GHCDynFlags.defaultDynFlags mySettings)
 #endif
 #if __GLASGOW_HASKELL__ >= 802
   liftIO $ GHCDynFlags.setUnsafeGlobalDynFlags dflags
@@ -265,6 +281,18 @@ readGHCModule name = do
 -- The following functions handle the second stage of importing a
 -- module: converting TyThings into PreObjs and TyNSElts
 
+#if __GLASGOW_HASKELL__ >= 806
+-- The constructor fo the function type was officially renamed in GHC 8.6
+-- We want to undo the effect of this renaming
+newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
+             (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
+normalizeTyCon :: TyCon -> TyCon
+normalizeTyCon tyc = if tyc == newFnTyCon then fnTyCon else tyc
+#else
+normalizeTyCon :: TyCon -> TyCon
+normalizeTyCon = id
+#endif
+
 -- | Convert a Data constructor into a TyCon, if we can. (We can't if,
 -- say, it uses unboxed types or something like that.) We usually
 -- assume that the TyCon can be imported from which it is defined; if
@@ -288,7 +316,8 @@ transformGHCTyc loc tyc = do
       loc'    = fromMaybe (InExplicitModuleNamed mname) loc
   (kind, chks) <- dePolyGHCKind $ GHCTyCon.tyConKind tyc
   kind'        <- unpackSimpleGHCKind kind
-  return $ (mkTyCon pckg mname oname loc' kind' (GHC.isClassTyCon tyc), chks)
+  let rawTyCon = mkTyCon pckg mname oname loc' kind' (GHC.isClassTyCon tyc)
+  return $ (normalizeTyCon rawTyCon, chks)
 
 -- | Convert something from the Type Construct namespace into a
 -- (name, TyNSElt) pair. We need to know the module it was imported
@@ -309,7 +338,7 @@ transformGHCTyNSElt import_module tyc = let
 #endif
     Nothing -> do
       (tyc', _) <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
-      return (oname, Left tyc')
+      return (if tyc' == fnTyCon then T.pack "(->)" else oname, Left tyc')
     Just (assigs, expansion, leftoverVars) -> case leftoverVars of
       (_:_) -> error "transformGHCTyNSElt: unexpected leftover vars"
       []    -> do let doAssig (tyv, var) = do ((tyv', k), _) <- transformGHCTyVar tyv
@@ -417,7 +446,10 @@ transformGHCTyVar tyv = do
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
-#if __GLASGOW_HASKELL__ >= 800
+#if __GLASGOW_HASKELL__ >= 806
+  Just (src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
+                         then (Just src, dest) else (Nothing, ty)
+#elif __GLASGOW_HASKELL__ >= 800
   Just (src, dest) -> if GHCKind.isConstraintKind (GHCType.typeKind src)
                          then (Just src, dest) else (Nothing, ty)
 #else

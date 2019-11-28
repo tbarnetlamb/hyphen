@@ -123,12 +123,12 @@ True
 
 >>> import hyphen, hs.Prelude, hs.Data.Maybe, hs.Data.Text
 >>> identity_on_Maybe_Text = hs.Prelude.id.subst(a=hs.Data.Maybe.Maybe(hs.Data.Text.Text()))
->>> identity_on_Maybe_Text
-<hyphen.HsFunObj object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text -> GHC.Base.Maybe Data.Text.Internal.Text>
->>> identity_on_Maybe_Text("Hello")
-<hs.GHC.Base.Just object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Just "Hello"'>
->>> identity_on_Maybe_Text(None)
-<hs.GHC.Base.Nothing object of Haskell type GHC.Base.Maybe Data.Text.Internal.Text, containing 'Nothing'>
+>>> identity_on_Maybe_Text           # doctest: +ELLIPSIS
+<hyphen.HsFunObj object of Haskell type GHC...Maybe Data.Text.Internal.Text -> GHC...Maybe Data.Text.Internal.Text>
+>>> identity_on_Maybe_Text("Hello")  # doctest: +ELLIPSIS
+<hs.GHC...Just object of Haskell type GHC...Maybe Data.Text.Internal.Text, containing 'Just "Hello"'>
+>>> identity_on_Maybe_Text(None)     # doctest: +ELLIPSIS
+<hs.GHC...Nothing object of Haskell type GHC...Maybe Data.Text.Internal.Text, containing 'Nothing'>
 
 >>> hs.Test.Example
 <class 'hs.Test.Example'>
@@ -180,7 +180,7 @@ True
 True
 
 >>> map1.hstype # doctest: +ELLIPSIS
-hs.Data...Map(hs.GHC.Integer.Integer(), hs.GHC.Integer.Integer())
+hs.Data...Map(hs.GHC...Integer(), hs.GHC...Integer())
 >>> str(map1.hstype) # NB: str(...) representation easier to read than repr, more closely matches Haskell notation  # doctest: +ELLIPSIS
 '<hyphen.HsType object representing Data.Map...Map GHC.Integer.Type.Integer GHC.Integer.Type.Integer>'
 >>> str(map2.hstype)  # doctest: +ELLIPSIS
@@ -190,8 +190,8 @@ False
 
 >>> map1.hstype.head # doctest: +ELLIPSIS
 ('Map', 'Data.Map...', ...)
->>> map1.hstype.tail
-(hs.GHC.Integer.Integer(), hs.GHC.Integer.Integer())
+>>> map1.hstype.tail # doctest: +ELLIPSIS
+(hs.GHC...Integer(), hs.GHC...Integer())
 >>> import hs.Data.Map
 >>> hs.Data.Map.Map('a', 'b') # doctest: +ELLIPSIS
 hs.Data.Map....Map(hyphen.HsType("a"), hyphen.HsType("b"))

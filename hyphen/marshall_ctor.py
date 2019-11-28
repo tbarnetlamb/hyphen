@@ -623,7 +623,7 @@ def process_constructors_from_module(module_name):
         if not isinstance(tycon, hyphen.hslowlevel.TyCon) or (
                 get_seen_visible_module(tycon) != module_name):
             continue
-        assert tycon.name == tycon_name
+        assert tycon.name == tycon_name, "Name mismatch: {} vs {}".format(tycon.name, tycon_name)
         tycons_defined_here[tycon] = ({}, {})
     for data_name, data in data_ns.items():
         if data_name.startswith("*co-"):
