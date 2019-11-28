@@ -31,9 +31,7 @@ matrix:
     - os:        linux
       env:       BUILD_TYPE="dynamic" PY_VER="3.6"
       ghc:       "8.6"
-    - os:        linux
-      env:       BUILD_TYPE="dynamic" PY_VER="3.7"
-      ghc:       "8.6"
+      dist:      xenial
 
 env:
   - BUILD_TYPE="dynamic" PY_VER="3"
