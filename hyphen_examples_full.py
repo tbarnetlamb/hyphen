@@ -23,8 +23,8 @@ False
 >>> hs.Prelude.id(b'foo')
 b'foo'
 
->>> hs.Prelude.id([1, 2, 3])
-<hs.GHC.Types.[] object of Haskell type [GHC.Integer.Type.Integer], containing '[1,2,3]'>
+>>> hs.Prelude.id([1, 2, 3])  # doctest: +ELLIPSIS
+<hs.GHC.Types.[] object of Haskell type [GHC...Integer], containing '[1,2,3]'>
 
 >>> hs.Prelude.id([1, '2', 3]) # doctest: +ELLIPSIS
 Traceback (most recent call last):
@@ -39,26 +39,26 @@ Traceback (most recent call last):
     ...
 TypeError: ...must be int, not float
 
->>> hs.Prelude.id((1, 2.0, 'foo'))
-<hs.GHC.Tuple.(,,) object of Haskell type (GHC.Integer.Type.Integer, GHC.Types.Float, Data.Text.Internal.Text), containing '(1,2.0,"foo")'>
+>>> hs.Prelude.id((1, 2.0, 'foo'))  # doctest: +ELLIPSIS
+<hs.GHC.Tuple.(,,) object of Haskell type (GHC...Integer, GHC.Types.Float, Data.Text.Internal.Text), containing '(1,2.0,"foo")'>
 
->>> hs.Prelude.id((True, 1+2.j))
+>>> hs.Prelude.id((True, 1+2.j))   # doctest: +ELLIPSIS
 <hs.GHC.Tuple.(,) object of Haskell type (GHC.Types.Bool, Data.Complex.Complex GHC.Types.Float), containing '(True,1.0 :+ 2.0)'>
 
 >>> hs.Prelude.id({1 : True, 2 : False}) # doctest: +ELLIPSIS
-<hs.Data.Map... object of Haskell type Data.Map... GHC.Integer.Type.Integer GHC.Types.Bool, containing 'fromList [(1,True),(2,False)]'>
+<hs.Data.Map... object of Haskell type Data.Map... GHC...Integer GHC.Types.Bool, containing 'fromList [(1,True),(2,False)]'>
 
 >>> hs.Prelude.id({1, 2}) # doctest: +ELLIPSIS
-<hs.Data.Set... object of Haskell type Data.Set... GHC.Integer.Type.Integer, containing 'fromList [1,2]'>
+<hs.Data.Set... object of Haskell type Data.Set... GHC...Integer, containing 'fromList [1,2]'>
 
 (Next 2 tests written in a funny way because Data.Maybe.Maybe moved to GHC.Base,
 and we want a test that passes both before and after the move)
 
->>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')
-"<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Just 1'>"
+>>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')  # doctest: +ELLIPSIS
+"<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC...Integer, containing 'Just 1'>"
 
->>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')
-"<hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC.Integer.Type.Integer, containing 'Nothing'>"
+>>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')  # doctest: +ELLIPSIS
+"<hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC...Integer, containing 'Nothing'>"
 
 Checking that (e.g.) Haskell lists give rise to iterable Python objects
 ==========

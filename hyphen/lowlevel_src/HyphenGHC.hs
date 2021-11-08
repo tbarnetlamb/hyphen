@@ -27,22 +27,52 @@ import qualified Data.Traversable
 import qualified Unsafe.Coerce
 import qualified GHC
 import qualified GHC.Paths
-#if __GLASGOW_HASKELL__ >= 802
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Builtin.Names    as GHCPrelNames
+import qualified GHC.Builtin.Types    as GHCTysWiredIn
+#elif __GLASGOW_HASKELL__ >= 802
 import qualified PrelNames   as GHCPrelNames
 import qualified TysWiredIn  as GHCTysWiredIn
 #else
 import qualified StaticFlags as GHCStaticFlags
 #endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.SysTools as GHCSysTools
+#else
 import qualified SysTools    as GHCSysTools
-#if __GLASGOW_HASKELL__ >= 808
+#endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.SysTools.BaseDir as GHCSysToolsBaseDir
+#elif __GLASGOW_HASKELL__ >= 808
 import qualified SysTools.BaseDir as GHCSysToolsBaseDir
 #endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Core.TyCon       as GHCTyCon
+import qualified GHC.Types.Name.Occurrence     as GHCOccName
+import qualified GHC.Unit.Types      as GHCModule
+import qualified GHC.Unit.Module.Name
+#else
 import qualified TyCon       as GHCTyCon
 import qualified OccName     as GHCOccName
 import qualified Module      as GHCModule
-#if __GLASGOW_HASKELL__ >= 800
+#endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Core.Type as GHCKind
+#elif __GLASGOW_HASKELL__ >= 810
+import qualified Type        as GHCKind
+#elif __GLASGOW_HASKELL__ >= 800
 import qualified Kind        as GHCKind
 #endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Core.Type         as GHCType
+import qualified GHC.Driver.Session    as GHCDynFlags
+import qualified GHC.Driver.Main       as GHCHscMain
+import qualified GHC.Utils.Monad       as GHCMonadUtils
+import qualified GHC.Types.Var         as GHCVar
+import qualified Control.Monad.Catch as MC
+import qualified GHC.Driver.Types      as GHCHscTypes
+import qualified GHC.Driver.Types
+#else
 import qualified Type        as GHCType
 import qualified DynFlags    as GHCDynFlags
 import qualified HscMain     as GHCHscMain
@@ -52,10 +82,17 @@ import qualified Outputable  as GHCOutputable
 import qualified ErrUtils    as GHCErrUtils
 import qualified Exception   as GHCException
 import qualified HscTypes    as GHCHscTypes
-#if __GLASGOW_HASKELL__ >= 708
+#endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Core.ConLike     as GHCConLike
+#elif __GLASGOW_HASKELL__ >= 708
 import qualified ConLike     as GHCConLike
 #endif
+#if __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Driver.Monad as GhcMonad
+#else
 import qualified GhcMonad
+#endif
 
 import HyphenBase
 import PythonBase
@@ -81,7 +118,13 @@ ourInitGhcMonad mb_top_dir = do
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
 #endif
 
-#if __GLASGOW_HASKELL__ >= 808
+#if __GLASGOW_HASKELL__ >= 810
+  top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
+  llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.lazyInitLlvmConfig top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings llvmc))
+#elif __GLASGOW_HASKELL__ >= 808
   top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
   llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.initLlvmConfig top_dir
@@ -107,7 +150,12 @@ ourInitGhcMonad mb_top_dir = do
   liftIO $ GHCDynFlags.setUnsafeGlobalDynFlags dflags
 #else
 #endif
+#if __GLASGOW_HASKELL__ >= 900
+  env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv (
+    GHCDynFlags.wopt_unset dflags GHCDynFlags.Opt_WarnWarningsDeprecations)
+#else
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv dflags
+#endif
   GHC.setSession env
 
 -- | The essential function of the following function is to take a
@@ -138,17 +186,30 @@ reportingGHCErrors :: (Maybe String) -> GhcMonad.Ghc a -> GhcMonad.Ghc (Either E
 reportingGHCErrors msgHint action = do
   logref <- GHCMonadUtils.liftIO $ newIORef ""
   dflags <- GhcMonad.getSessionDynFlags
+#if __GLASGOW_HASKELL__ >= 900
+  let prep  = GHC.setSessionDynFlags $ dflags
+#else
   let prep  = GHC.setSessionDynFlags $ dflags { GHCDynFlags.log_action = logHandler logref }
+#endif
       clean = GHC.setSessionDynFlags dflags
+#if __GLASGOW_HASKELL__ >= 900
+      handler :: GHC.Driver.Types.SourceError -> GhcMonad.Ghc a
+#else
       handler :: GHCHscTypes.SourceError -> GhcMonad.Ghc a
+#endif
       handler ex = GHCMonadUtils.liftIO $ do
         case msgHint of
           Just h  -> Control.Exception.throwIO . Control.Exception.AssertionFailed $
                      h ++ show ex
           Nothing -> Control.Exception.throwIO ex
 
+#if __GLASGOW_HASKELL__ >= 900
+  result <- MC.handle handler $ do
+    MC.bracket prep (const clean) . const $ do
+#else
   result <- GHCException.ghandle handler $ do
     GHCException.gbracket prep (const clean) . const $ do
+#endif
       action
   problems <- GHCMonadUtils.liftIO $ readIORef logref
 
@@ -157,6 +218,8 @@ reportingGHCErrors msgHint action = do
        hintedWith Nothing  s = s
        hintedWith (Just h) s = concat [s, "\n(while trying to ", h, ")"]
 
+#if __GLASGOW_HASKELL__ >= 900
+#else
        logHandler :: IORef String -> GHCDynFlags.LogAction
 #if __GLASGOW_HASKELL__ >= 800
        logHandler ref dflags warnreason severity srcSpan style msg =
@@ -170,6 +233,7 @@ reportingGHCErrors msgHint action = do
          where cntx = GHCOutputable.initSDocContext dflags style
                locMsg = GHCErrUtils.mkLocMessage severity srcSpan msg
                printDoc = show (GHCOutputable.runSDoc locMsg cntx)
+#endif
 
 -- | Make a new GHC session and bring the Prelude into scope. This
 -- function translates any errors that arise into nice Python
@@ -301,10 +365,15 @@ normalizeTyCon = id
 -- Maybe TyCLocation.
 
 transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe (TyCon, [GHC.Type -> Bool])
+#if __GLASGOW_HASKELL__ >= 900
+transformGHCTyc _ tyc | GHC.isFunTyCon tyc  = Just (fnTyCon, [const True, isLiftedRuntimeRep, isLiftedRuntimeRep])
+#endif
 transformGHCTyc loc tyc = do
   let ghcName = GHC.getName tyc
       modl    = GHC.nameModule ghcName
-#if __GLASGOW_HASKELL__ >= 800
+#if __GLASGOW_HASKELL__ >= 900
+      pckg    = T.pack . GHCModule.unitString $ GHC.moduleUnit modl
+#elif __GLASGOW_HASKELL__ >= 800
       pckg    = T.pack . GHCModule.unitIdString $ GHC.moduleUnitId modl
 #elif __GLASGOW_HASKELL__ >= 710
       pckg    = T.pack . GHCModule.packageKeyString $ GHC.modulePackageKey modl
@@ -446,7 +515,10 @@ transformGHCTyVar tyv = do
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
-#if __GLASGOW_HASKELL__ >= 806
+#if __GLASGOW_HASKELL__ >= 900
+  Just (_, src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
+                            then (Just src, dest) else (Nothing, ty)
+#elif __GLASGOW_HASKELL__ >= 806
   Just (src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
                          then (Just src, dest) else (Nothing, ty)
 #elif __GLASGOW_HASKELL__ >= 800
@@ -665,7 +737,11 @@ preModuleOtherModsOfInterest (preobjs, tynselts)
 -- from the module in question.
 
 readGHCModuleTycCanon :: Text -> GhcMonad.Ghc (HashMap TyCon TyCon, Maybe Text)
+#if __GLASGOW_HASKELL__ >= 900
+readGHCModuleTycCanon mname = MC.handle handler $ do
+#else
 readGHCModuleTycCanon mname = GHCException.ghandle handler $ do
+#endif
   --GHCMonadUtils.liftIO $ print mname
   result <- reportingGHCErrors Nothing $ do
     tyths      <- readGHCModule mname
@@ -712,7 +788,11 @@ ensureModulesInContext toEnsure = do
       newImps  = toEnsure `Set.difference` curImps
   GHC.setContext $ [
     (GHC.IIDecl $ (GHC.simpleImportDecl . GHC.mkModuleName . T.unpack $ modName)  {
+#if __GLASGOW_HASKELL__ >= 810
+        GHC.ideclQualified = GHC.QualifiedPre})
+#else
         GHC.ideclQualified = True})
+#endif
     | modName <- Set.toList newImps] ++ curiis
 
 -- | Make a string like (x1, x2, x3, ..., xn), where the xs are all
@@ -813,7 +893,12 @@ importSrcModules sess paths = do
     GHC.setContext curiis
     case loadOK of
       GHC.Succeeded ->
+#if __GLASGOW_HASKELL__ >= 900
+        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+                . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
+#else
         return [T.pack . GHCModule.moduleNameString
                 . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
+#endif
       GHC.Failed    -> return []
   importLibModules sess srcModuleNames

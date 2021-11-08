@@ -3,7 +3,7 @@ This file contains all the examples from README.md as doctests.
 
 >>> import hyphen, hs.Prelude
 >>> hs.Prelude.drop(1, [1,2,3]) # doctest: +ELLIPSIS
-<hs.GHC.Types.[] object of Haskell type [GHC.Integer...Integer], containing '[2,3]'>
+<hs.GHC.Types.[] object of Haskell type [GHC...Integer], containing '[2,3]'>
 >>> list(hs.Prelude.drop(1, [1,2,3]))   # Convert back to Python list
 [2, 3]
 >>> hs.Prelude.id(3)
@@ -20,8 +20,8 @@ This file contains all the examples from README.md as doctests.
 >>> hs.Prelude.drop(5, "Hello, world")
 ', world'
 
->>> hs.Prelude.drop(1, [1,2,3])
-<hs.GHC.Types.[] object of Haskell type [GHC.Integer.Type.Integer], containing '[2,3]'>
+>>> hs.Prelude.drop(1, [1,2,3])  # doctest: +ELLIPSIS
+<hs.GHC.Types.[] object of Haskell type [GHC...Integer], containing '[2,3]'>
 
 >>> my_list = hs.Prelude.drop(1, [1,2,3])
 >>> hs.Prelude.sum(my_list)
@@ -41,8 +41,8 @@ This file contains all the examples from README.md as doctests.
 [1, 2]
 
 >>> my_func = hs.Prelude.const(4)
->>> my_func
-<hyphen.HsFunObj object of Haskell type b_0 -> GHC.Integer.Type.Integer>
+>>> my_func  # doctest: +ELLIPSIS
+<hyphen.HsFunObj object of Haskell type b_0 -> GHC...Integer>
 >>> my_func('Hello')
 4
 
@@ -69,8 +69,8 @@ This file contains all the examples from README.md as doctests.
 'world'
 >>> hs.Data.Text.drop(6, "Hello world") # Python string -> Haskell Text
 'world'
->>> hs.Prelude.drop(1, (1, 2))          # Python tuple  -> Haskell list
-<hs.GHC.Types.[] object of Haskell type [GHC.Integer.Type.Integer], containing '[2]'>
+>>> hs.Prelude.drop(1, (1, 2))          # Python tuple  -> Haskell list  # doctest: +ELLIPSIS
+<hs.GHC.Types.[] object of Haskell type [GHC...Integer], containing '[2]'>
 >>> hs.Prelude.snd((1, 2))              # Python tuple  -> Haskell tuple
 2
 
@@ -78,13 +78,13 @@ This file contains all the examples from README.md as doctests.
 3
 >>> hs.Prelude._['+'] (1+0j, 2+3j)      # Select Complex Float version
 (3+3j)
->>> hs.Prelude.id([1, 2, 3])            # Invoke version of id for lists of integers
-<hs.GHC.Types.[] object of Haskell type [GHC.Integer.Type.Integer], containing '[1,2,3]'>
+>>> hs.Prelude.id([1, 2, 3])            # Invoke version of id for lists of integers   # doctest: +ELLIPSIS
+<hs.GHC.Types.[] object of Haskell type [GHC...Integer], containing '[1,2,3]'>
 
->>> hs.Prelude.id((1, 2))  # Prefer to convert Python tuples to Haskell tuples, not lists
-<hs.GHC.Tuple.(,) object of Haskell type (GHC.Integer.Type.Integer, GHC.Integer.Type.Integer), containing '(1,2)'>
->>> hs.Prelude.id((1, "Test")) # Prefer to convert Python strings to Haskell Text
-<hs.GHC.Tuple.(,) object of Haskell type (GHC.Integer.Type.Integer, Data.Text.Internal.Text), containing '(1,"Test")'>
+>>> hs.Prelude.id((1, 2))  # Prefer to convert Python tuples to Haskell tuples, not lists  # doctest: +ELLIPSIS
+<hs.GHC.Tuple.(,) object of Haskell type (GHC...Integer, GHC...Integer), containing '(1,2)'>
+>>> hs.Prelude.id((1, "Test")) # Prefer to convert Python strings to Haskell Text  # doctest: +ELLIPSIS
+<hs.GHC.Tuple.(,) object of Haskell type (GHC...Integer, Data.Text.Internal.Text), containing '(1,"Test")'>
 
 >>> try:
 ...    hs.Prelude._['+'] (1, 2+3j) # doctest: +ELLIPSIS
@@ -93,7 +93,7 @@ This file contains all the examples from README.md as doctests.
 Incompatible types: cannot resolve object of type
     a -> a -> a
 to type
-    GHC.Integer.Type.Integer -> Data.Complex.Complex GHC.Types.Float -> a
+    GHC...Integer -> Data.Complex.Complex GHC.Types.Float -> a
 
 >>> hs.Prelude.foldr((lambda x, y: x + y), 0, [1, 2, 3])
 6
@@ -172,19 +172,19 @@ True
 
 >>> map1 = hs.Prelude.id({1 :1, 2:2})
 >>> map1 # doctest: +ELLIPSIS
-<hs.Data.Map... object of Haskell type Data.Map...Map GHC.Integer.Type.Integer GHC.Integer.Type.Integer, containing 'fromList [(1,1),(2,2)]'>
+<hs.Data.Map... object of Haskell type Data.Map...Map GHC...Integer GHC...Integer, containing 'fromList [(1,1),(2,2)]'>
 >>> map2 = hs.Prelude.id({1:'one', 2:'two'})
 >>> map2 # doctest: +ELLIPSIS
-<hs.Data.Map... object of Haskell type Data.Map...Map GHC.Integer.Type.Integer Data.Text.Internal.Text, containing 'fromList [(1,"one"),(2,"two")]'>
+<hs.Data.Map... object of Haskell type Data.Map...Map GHC...Integer Data.Text.Internal.Text, containing 'fromList [(1,"one"),(2,"two")]'>
 >>> type(map1) == type(map2)
 True
 
 >>> map1.hstype # doctest: +ELLIPSIS
 hs.Data...Map(hs.GHC...Integer(), hs.GHC...Integer())
 >>> str(map1.hstype) # NB: str(...) representation easier to read than repr, more closely matches Haskell notation  # doctest: +ELLIPSIS
-'<hyphen.HsType object representing Data.Map...Map GHC.Integer.Type.Integer GHC.Integer.Type.Integer>'
+'<hyphen.HsType object representing Data.Map...Map GHC...Integer GHC...Integer>'
 >>> str(map2.hstype)  # doctest: +ELLIPSIS
-'<hyphen.HsType object representing Data.Map...Map GHC.Integer.Type.Integer Data.Text.Internal.Text>'
+'<hyphen.HsType object representing Data.Map...Map GHC...Integer Data.Text.Internal.Text>'
 >>> map1.hstype == map2.hstype
 False
 
@@ -204,14 +204,14 @@ hyphen.HsType("a", kind="* -> *")
 >>> hyphen.HsType('a', hs.Prelude.Integer(), kind="*->*")
 hyphen.HsType("a", hs.Prelude.Integer(), kind="* -> *")
 
->>> hs.Prelude.Integer
-<class 'hs.GHC.Integer.Type.Integer'>
+>>> hs.Prelude.Integer  # doctest: +ELLIPSIS
+<class 'hs.GHC...Integer'>
 >>> type(hs.Prelude.Integer)
 <class 'type'>
 >>> hs.Prelude.Integer()
 hs.Prelude.Integer()
->>> str(hs.Prelude.Integer())
-'<hyphen.HsType object representing GHC.Integer.Type.Integer>'
+>>> str(hs.Prelude.Integer())  # doctest: +ELLIPSIS
+'<hyphen.HsType object representing GHC...Integer>'
 >>> type(hs.Prelude.Integer())
 <class 'hyphen.HsType'>
 
@@ -226,7 +226,7 @@ hs.GHC.Prim._['(->)'](hyphen.HsType("a"), hyphen.HsType("a"))
 '*'
 >>> my_hstype2 = my_hstype.subst(a=map1.hstype)
 >>> str(my_hstype2) # doctest: +ELLIPSIS
-'<hyphen.HsType object representing Data.Map...Map GHC.Integer.Type.Integer GHC.Integer.Type.Integer -> Data.Map...Map GHC.Integer.Type.Integer GHC.Integer.Type.Integer>'
+'<hyphen.HsType object representing Data.Map...Map GHC...Integer GHC...Integer -> Data.Map...Map GHC...Integer GHC...Integer>'
 
 >>> int_identity = hs.Prelude.id.subst(a=hs.Prelude.Int())
 >>> int_identity
