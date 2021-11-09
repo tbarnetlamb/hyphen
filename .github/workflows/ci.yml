@@ -46,11 +46,10 @@ jobs:
     strategy:
       matrix:
         stack: ["2.3.1"]
-	# GHC version here doesn't really matter because stack picks one from the LTS
+# GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
-	# GHC 8.8, 8.10, 9.0
-	#resolver: ["16.31", "18.16", "nightly-2021-11-06"]
-	resolver: ["16.31"]
+#       resolver: ["16.31", "18.16", "nightly-2021-11-06"] # GHC 8.8, 8.10, 9.0
+        resolver: ["16.31"]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.4
