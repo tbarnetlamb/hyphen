@@ -23,20 +23,11 @@ jobs:
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
-      - if: matrix.os == 'ubuntu-latest'
-        run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
-      - if: matrix.os == 'windows-latest'
-        run: cabal v1-install text transformers mtl parsec hashable unordered-containers ghc-paths
+      - run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: python3 --version
       - run: ghc --version
-      - if: matrix.os == 'ubuntu-latest'
-        run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
-      - if: matrix.os == 'windows-latest'
-        run: ghc -fPIC Test.hs -no-link
-      - if: matrix.os == 'ubuntu-latest'
-        run: python3 hyphen/build-extn.py --dynamic
-      - if: matrix.os == 'windows-latest'
-        run: python3 hyphen/build-extn.py
+      - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
+      - run: python3 hyphen/build-extn.py --dynamic
       - run: python3 hyphen_examples_full.py
 # Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
       - run: python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
@@ -48,10 +39,7 @@ jobs:
       - run: python3 test_tools/test_GIL_release.py fancy 5 5 5 12
       - run: python3 test_tools/test_GIL_release.py lazy 5 5 24 100
 # Now test everything that still makes sense without the threaded Haskell rts
-      - if: matrix.os == 'ubuntu-latest'
-        run: python3 hyphen/build-extn.py --not-threaded
-      - if: matrix.os == 'windows-latest'
-        run: python3 hyphen/build-extn.py --dynamic --not-threaded
+      - run: python3 hyphen/build-extn.py --dynamic --not-threaded
       - run: python3 hyphen_examples_full.py
   stack:
     name: ${{ matrix.os }} / stack ${{ matrix.resolver }}
