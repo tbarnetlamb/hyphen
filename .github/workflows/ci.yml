@@ -45,12 +45,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest,macos-latest]
+        os: [ubuntu-latest,macos-latest,windows-latest]
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
-#       resolver: ["lts-16.31", "lts-18.16", "nightly-2021-11-06"] # GHC 8.8, 8.10, 9.0
-        resolver: ["lts-16.31"]
+        resolver: ["lts-16.31", "lts-18.16", "nightly-2021-11-06"] # GHC 8.8, 8.10, 9.0
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.4
@@ -64,6 +63,8 @@ jobs:
         run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
       - if: matrix.os == 'macos-latest'
         run: echo "arch_flag=" >> $GITHUB_ENV
+      - if: matrix.os == 'windows-latest'
+        run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} build
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc --version
@@ -77,8 +78,10 @@ jobs:
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py python 5 40 0 33
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py haskell 5 40 0 33
 # Test that releasing the GIL works (and that we get the expected behavior with it disabled)
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
+      - if: matrix.os == 'ubuntu-latest'
+        run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12
+      - if: matrix.os == 'ubuntu-latest'
+        run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
 # Now test everything that still makes sense without the threaded Haskell rts
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic --not-threaded
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
