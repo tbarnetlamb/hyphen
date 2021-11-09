@@ -8,13 +8,13 @@ on:
       - opened
       - synchronize
 jobs:
-  build:
+  cabal:
+    name: ${{ matrix.os }} / cabal ghc ${{ matrix.ghc }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         cabal: ["3.4"]
-#        ghc: ["8.8.4", "8.10.5", "9.0.1"]
-        ghc: ["8.8.4"]
+        ghc: ["8.10.5"]
     steps:
       - uses: actions/checkout@v2
       - uses: haskell/actions/setup@v1.2
@@ -40,3 +40,41 @@ jobs:
 # Now test everything that still makes sense without the threaded Haskell rts
       - run: python3 hyphen/build-extn.py --dynamic --not-threaded
       - run: python3 hyphen_examples_full.py
+  stack:
+    name: ${{ matrix.os }} / stack ${{ matrix.resolver }}
+    runs-on: ubuntu-latest, macos-latest
+    strategy:
+      matrix:
+        stack: ["2.3.1"]
+	# GHC version here doesn't really matter because stack picks one from the LTS
+        bootstrap_ghc: ["8.10.5"]
+	# GHC 8.8, 8.10, 9.0
+	#resolver: ["16.31", "18.16", "nightly-2021-11-06"]
+	resolver: ["16.31"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-haskell@v1.1.4
+        id: setup-haskell-stack
+        with:
+          ghc-version: ${{ matrix.bootstrap_ghc }}
+          stack-version: ${{ matrix.stack }}
+	  stack-no-global: True
+	  enable-stack: True
+      - run: stack --resolver ${{ matrix.resolver }} build
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 --version
+      - run: stack --resolver ${{ matrix.resolver }} exec -- ghc --version
+      - run: stack --resolver ${{ matrix.resolver }} exec -- ghc -dynamic-too -shared -fPIC Test.hs -no-link
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
+# Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py haskell 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py lazy 40 31 100
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py python 5 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py haskell 5 40 0 33
+# Test that releasing the GIL works (and that we get the expected behavior with it disabled)
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
+# Now test everything that still makes sense without the threaded Haskell rts
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic --not-threaded
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
