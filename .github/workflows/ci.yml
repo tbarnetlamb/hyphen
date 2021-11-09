@@ -42,9 +42,10 @@ jobs:
       - run: python3 hyphen_examples_full.py
   stack:
     name: ${{ matrix.os }} / stack ${{ matrix.resolver }}
-    runs-on: ubuntu-latest, macos-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, macOS-latest]
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
