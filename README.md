@@ -1,5 +1,4 @@
 [![GitHub CI](https://github.com/userName/repoName/workflows/CI/badge.svg)](https://github.com/userName/repoName/actions)
-[![Appveyor build status](https://ci.appveyor.com/api/projects/status/414bc62yo05vetel?svg=true)](https://ci.appveyor.com/project/tbarnetlamb/hyphen)
 
 Hyphen
 ======
