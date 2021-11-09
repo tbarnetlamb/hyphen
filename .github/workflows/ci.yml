@@ -10,9 +10,10 @@ on:
 jobs:
   cabal:
     name: ${{ matrix.os }} / cabal ghc ${{ matrix.ghc }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest,windows-latest]
         cabal: ["3.4"]
         ghc: ["8.10.5"]
     steps:
@@ -45,7 +46,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest,macos-latest,windows-latest]
+        os: [ubuntu-latest,macos-latest]
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
