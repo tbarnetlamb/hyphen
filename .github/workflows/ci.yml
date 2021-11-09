@@ -103,15 +103,22 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} build
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 --version
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- ghc --version
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- ghc -shared -fPIC Test.hs -no-link
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
+# Building on x86_64 with m2w64 seems to tickle a ghc bug (see eg ghc
+# trac #14576) Can't build without m2w64 on windows 64 bit with python
+# 3.5 or later.  So don't bother to test these configurations for now.
+# FWIW, hyphen has been tested with python 3.4 on 64-bit windows a
+# while ago and that worked, but it involved messing with gendef.exe,
+# and is only a solution for this fairly old python version anyway,
+# and so I don't really have the energy to automate it in CI	  
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} build
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 --version
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- ghc --version
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- ghc -shared -fPIC Test.hs -no-link
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
 # Test that releasing the GIL works (and that we get the expected behavior with it disabled)
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
 # Now test everything that still makes sense without the threaded Haskell rts
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --not-threaded
-      - run: stack --arch x86_64 --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --not-threaded
+      - run: stack --arch i386 --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
