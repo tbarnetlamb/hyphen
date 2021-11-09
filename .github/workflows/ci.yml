@@ -57,8 +57,8 @@ jobs:
         with:
           ghc-version: ${{ matrix.bootstrap_ghc }}
           stack-version: ${{ matrix.stack }}
-	  stack-no-global: True
-	  enable-stack: True
+          stack-no-global: True
+          enable-stack: True
       - run: stack --resolver ${{ matrix.resolver }} build
       - run: stack --resolver ${{ matrix.resolver }} exec -- python3 --version
       - run: stack --resolver ${{ matrix.resolver }} exec -- ghc --version
