@@ -60,9 +60,9 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
-      - if: ${{ matrix.os }} == "ubuntu-latest"
+      - if: matrix.os == 'ubuntu-latest'
         run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
-      - if: ${{ matrix.os }} == "macos-latest"
+      - if: matrix.os == 'macos-latest'
         run: echo "arch_flag=" >> $GITHUB_ENV
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} build
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 --version
