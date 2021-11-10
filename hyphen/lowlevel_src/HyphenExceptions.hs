@@ -233,8 +233,8 @@ setSystemExit ecode =
 -- provide a return value consistent with the fact that we have set
 -- the error indicator.
 
-captureAsyncExceptions :: forall b. (b -> IO b)
-                          -> ((forall a. IO a -> IO a) -> IO b)
+captureAsyncExceptions :: forall a b. (b -> IO b)
+                          -> ((IO a -> IO a) -> IO b)
                           -> IO b
 captureAsyncExceptions dispose action = Exception.mask $ \restore -> do
   result    <- action restore

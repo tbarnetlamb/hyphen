@@ -31,7 +31,7 @@ from hyphen        import hslowlevel
 ## fetch_lib_module(<module_name>) returns a pair (objs, types) where
 ## objs is a dictionary containing the 'object' namespace from the
 ## module and types is a dictionary containing the types namespace.
-hsprimitives = fetch_lib_module('prim'        )
+hsprimitives = fetch_lib_module('prim')
 hs_List      = hsprimitives['[]'].hstype.head_ll
 hs_Complex   = fetch_lib_module('Data.Complex'   )[1]['Complex']
 hs_Maybe     = fetch_lib_module('Data.Maybe'     )[1]['Maybe']

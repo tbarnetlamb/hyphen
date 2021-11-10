@@ -466,10 +466,10 @@ def pyobj_hstype_hint(py_obj, known_so_far=None, fv_src=None):
     list is needed, things Just Work.
 
     For example:
-    >>> str(pyobj_hstype_hint((1, 2), None))
-    '<hyphen.HsType object representing (GHC.Integer.Type.Integer, GHC.Integer.Type.Integer)>'
-    >>> str(pyobj_hstype_hint((1, 2), hs_List(hslowlevel.HsType('a'))))
-    '<hyphen.HsType object representing [GHC.Integer.Type.Integer]>'
+    >>> str(pyobj_hstype_hint((1, 2), None))  # doctest: +ELLIPSIS
+    '<hyphen.HsType object representing (GHC...Integer, GHC...Integer)>'
+    >>> str(pyobj_hstype_hint((1, 2), hs_List(hslowlevel.HsType('a'))))    # doctest: +ELLIPSIS
+    '<hyphen.HsType object representing [GHC...Integer]>'
 
     ]
 
