@@ -1,4 +1,4 @@
-[![GitHub CI](https://github.com/userName/repoName/workflows/CI/badge.svg)](https://github.com/userName/repoName/actions)
+[![GitHub CI](https://github.com/tbarnetlamb/hyphen/workflows/CI/badge.svg)](https://github.com/tbarnetlamb/hyphen/actions)
 
 Hyphen
 ======
