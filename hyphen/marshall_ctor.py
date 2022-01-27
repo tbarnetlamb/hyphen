@@ -32,7 +32,10 @@ below.
 
 from __future__           import absolute_import
 
-import collections
+try:
+    import collections.abc as abc
+except:
+    import collections     as abc
 
 import hyphen
 from hyphen.caches import fetch_lib_module
@@ -425,13 +428,13 @@ tycon_specials = {
         "__getitem__" : map_lookup,
         "__iter__"    : iterate_hsmap,
         "__len__"     : member_from_unary_hsfn(hs_sizeOfMap),
-        "BASES"       : (collections.Mapping,),
+        "BASES"       : (abc.Mapping,),
         },
     hs_Set : {
         "__contains__" : set_member,
         "__iter__"     : iterate_hsset,
         "__len__"      : member_from_unary_hsfn(hs_sizeOfSet),
-        "BASES"        : (collections.Set,),
+        "BASES"        : (abc.Set,),
         },
     hs_Func : {
         "__call__"    : apply_marshalled,
@@ -448,7 +451,7 @@ tycon_specials = {
 tycon_specials.update(dict([(tup_tyc, {
     "__getitem__" : tuple_getitem,
     "__len__"     : const_fn(tup_len),
-    "BASES"       : (collections.Sequence,),
+    "BASES"       : (abc.Sequence,),
     }) for tup_len, tup_tyc in enumerate(hs_tupletycs_bylength)]))
 
 # The second kind of hook affects the types we build to represent

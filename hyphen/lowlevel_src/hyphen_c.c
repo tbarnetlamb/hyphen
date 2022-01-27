@@ -231,6 +231,14 @@ pythonateUTF16Ptr(const Py_UCS2* s, HsInt size)
 }
 
 HsPtr
+pythonateUTF8Ptr(const char* s, HsInt size)
+{
+  /* Create a python string object from a pointer to UTF16 data and a
+     string length. */
+  return PyUnicode_DecodeUTF8(s, size, NULL);
+}
+
+HsPtr
 pythonateBytePtr(const char* s, HsInt size)
 {
   /* Create a python bytes object from a pointer to data and a string length. */
@@ -250,13 +258,35 @@ pythonateFalse()
 }
 
 HsPtr
-pythonateIntegerFromStr(const Py_UCS2* s, HsInt size)
+pythonateIntegerFromUTF16Str(const Py_UCS2* s, HsInt size)
 {
   /* Create a python integer object from a pointer to a buffer
      containing the number encoded in hex as a UTF16 string. Only used
      for numbers too long to fit in a long. */
   PyObject *str, *num;
   str = PyUnicode_DecodeUTF16((char*) s, size*2, NULL, NULL);
+  if (!str)
+    {
+      return 0;
+    }
+
+  num = PyLong_FromUnicodeObject(str, 16);
+  if (!num)
+    {
+      Py_DECREF(str);
+      return 0;
+    }
+  return num;
+}
+
+HsPtr
+pythonateIntegerFromUTF8Str(const char* s, HsInt size)
+{
+  /* Create a python integer object from a pointer to a buffer
+     containing the number encoded in hex as a UTF16 string. Only used
+     for numbers too long to fit in a long. */
+  PyObject *str, *num;
+  str = PyUnicode_DecodeUTF8(s, size, NULL);
   if (!str)
     {
       return 0;
