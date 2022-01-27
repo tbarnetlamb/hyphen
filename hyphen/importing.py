@@ -56,7 +56,7 @@ actual Haskell module with that name.
 
 [footnote 1] In fact, Haskell officially has 6 namespaces in play:
 type constructors, data constructors, type variables, plain objects,
-infix operators and infix data constructors. But type constructors can
+infix operators and infix data constructors. But type variables can
 never be exported, so they're out of the picture in terms of what you
 might find in a module, and then the only actual *collisions* that are
 possible are between type constructors and data constructors because
