@@ -231,10 +231,10 @@ hs.GHC.Prim._['(->)'](hyphen.HsType("a"), hyphen.HsType("a"))
 >>> int_identity = hs.Prelude.id.subst(a=hs.Prelude.Int())
 >>> int_identity
 <hyphen.HsFunObj object of Haskell type GHC.Types.Int -> GHC.Types.Int>
->>> int_identity('Foo')
+>>> int_identity('Foo') # doctest: +ELLIPSIS
 Traceback (most recent call last):
 ...
-TypeError: an integer is required (got type str)
+TypeError: ...
 >>> int_identity(1)
 1
 >>> hs.Prelude.id.narrow_type(int_identity.hstype)

@@ -49,10 +49,21 @@ foreign import ccall unsafe pythonateInt        :: Int        -> IO PyObj
 foreign import ccall unsafe pythonateFloat      :: Float      -> IO PyObj
 foreign import ccall unsafe pythonateDouble     :: Double     -> IO PyObj
 foreign import ccall unsafe pythonateUTF16Ptr   :: Ptr Word16 -> Int -> IO PyObj
+foreign import ccall unsafe pythonateUTF8Ptr    :: Ptr Word8  -> Int -> IO PyObj
 foreign import ccall unsafe pythonateBytePtr    :: CString    -> Int -> IO PyObj
 foreign import ccall unsafe pythonateTrue       :: IO PyObj
 foreign import ccall unsafe pythonateFalse      :: IO PyObj
-foreign import ccall unsafe pythonateIntegerFromStr :: Ptr Word16 -> Int -> IO PyObj
+foreign import ccall unsafe pythonateIntegerFromUTF16Str :: Ptr Word16 -> Int -> IO PyObj
+foreign import ccall unsafe pythonateIntegerFromUTF8Str  :: Ptr Word8  -> Int -> IO PyObj
+
+class PythonateUTF a where
+  pythonateUTFPtr :: Ptr a -> Int -> IO PyObj
+  pythonateIntegerFromStr :: Ptr a -> Int -> IO PyObj
+
+instance PythonateUTF Word16 where pythonateUTFPtr = pythonateUTF16Ptr
+                                   pythonateIntegerFromStr = pythonateIntegerFromUTF16Str
+instance PythonateUTF Word8  where pythonateUTFPtr = pythonateUTF8Ptr
+                                   pythonateIntegerFromStr = pythonateIntegerFromUTF8Str
 
 pythonateBool         :: Bool    -> IO PyObj
 pythonateBool b       = if b then pythonateTrue else pythonateFalse
@@ -64,8 +75,8 @@ pythonateString       :: String  -> IO PyObj
 pythonateString       = pythonateText . T.pack
 
 pythonateText         :: Text    -> IO PyObj
-pythonateText t       = Data.Text.Foreign.useAsPtr t pythonateUTF16Ptr'
-  where pythonateUTF16Ptr' ptr i16 = pythonateUTF16Ptr ptr (fromInteger $ toInteger i16)
+pythonateText t       = Data.Text.Foreign.useAsPtr t pythonateUTFPtr'
+  where pythonateUTFPtr' ptr i16 = pythonateUTFPtr ptr (fromInteger $ toInteger i16)
 
 pythonateByteString   :: ByteString    -> IO PyObj
 pythonateByteString t = Data.ByteString.Unsafe.unsafeUseAsCStringLen t

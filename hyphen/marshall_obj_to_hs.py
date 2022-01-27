@@ -26,7 +26,11 @@ hooks, so users can extend the built-in handing if they so desire.
 
 from __future__           import absolute_import
 
-import collections, types
+try:
+    import collections.abc as abc
+except:
+    import collections     as abc
+import types
 
 from hyphen.utils  import (
     hs_Complex, hs_Maybe, hs_List, hs_Set, hs_Map, hs_IO, hs_Func,
@@ -433,9 +437,9 @@ pyobj_hstype_hint_per_type_hooks = {
 # hand
 
 pyobj_hstype_hint_general_hooks = [
-    whenInst(collections.Sequence, sequence_hstype_hint),
-    whenInst(collections.Mapping,  mapping_hstype_hint),
-    whenInst(collections.Set,      set_hstype_hint),
+    whenInst(abc.Sequence, sequence_hstype_hint),
+    whenInst(abc.Mapping,  mapping_hstype_hint),
+    whenInst(abc.Set,      set_hstype_hint),
 ]
 
 
