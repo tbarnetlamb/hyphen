@@ -1080,14 +1080,14 @@ to_haskell_String(PyObject *self, PyObject *args)
 {
   char        *buffer=0;
   Py_ssize_t   buffer_length=-1;
-  if (!PyArg_ParseTuple(args, "es#:to_haskell_String", "utf-16", &buffer, &buffer_length))
+  if (!PyArg_ParseTuple(args, "es#:to_haskell_String", "utf-8", &buffer, &buffer_length))
     {
       return NULL;
     }
 
   /* Ingore first two bytes of encoded string; they are the BOM. Also
      convert length from bytes to UTF-16 words. */
-  PyObject *ret = buildHaskellString((HsPtr) (buffer+2), (buffer_length-2)/2);
+  PyObject *ret = buildHaskellString((HsPtr) buffer, buffer_length);
   PyMem_Free(buffer);
   return ret;
 }
@@ -1097,14 +1097,14 @@ to_haskell_Text(PyObject *self, PyObject *args)
 {
   char       *buffer=0;
   Py_ssize_t  buffer_length=-1;
-  if (!PyArg_ParseTuple(args, "es#:to_haskell_Text", "utf-16", &buffer, &buffer_length))
+  if (!PyArg_ParseTuple(args, "es#:to_haskell_Text", "utf-8", &buffer, &buffer_length))
     {
       return NULL;
     }
 
   /* Ingore first two bytes of encoded string; they are the BOM. Also
      convert length from bytes to UTF-16 words. */
-  PyObject *ret = buildHaskellText((HsPtr) (buffer+2), (buffer_length-2)/2);
+  PyObject *ret = buildHaskellText((HsPtr) buffer, buffer_length);
   PyMem_Free(buffer);
   return ret;
 }

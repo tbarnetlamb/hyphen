@@ -1,5 +1,5 @@
-#include "HsFFI.h"
-#ifdef __cplusplus
+#include <HsFFI.h>
+#if defined(__cplusplus)
 extern "C" {
 #endif
 extern HsInt setupHaskellCtrlCHandler(void);
@@ -67,7 +67,7 @@ extern HsPtr ok_python_identif(HsPtr a1, HsPtr a2);
 extern HsPtr hyphen_apply(HsPtr a1, HsPtr a2);
 extern HsPtr hyphen_doio_impl(HsInt a1, HsInt a2, HsPtr a3);
 extern HsPtr hyphen_wrap_pyfn_impl(HsPtr a1, HsPtr a2, HsInt a3);
-#ifdef __cplusplus
+#if defined(__cplusplus)
 }
 #endif
 

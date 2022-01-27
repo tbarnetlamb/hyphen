@@ -15,7 +15,6 @@ import Control.Concurrent
 import Control.DeepSeq
 import Data.IORef
 import Data.Monoid
-import Data.Word
 import Data.Maybe
 import Data.Hashable
 import Data.Char
@@ -34,7 +33,6 @@ import System.IO.Unsafe    (unsafePerformIO)
 import Debug.Trace
 import qualified Data.Text            as T
 import qualified Data.Map.Strict      as Map
-import qualified Data.Text.Foreign
 import qualified Data.Text.Read
 import qualified Data.Text.Encoding
 import qualified Data.ByteString
@@ -947,19 +945,19 @@ buildHaskellBool       = formSimpleHsObjRaw'
 foreign export ccall buildHaskellChar       :: Char   -> IO PyObj
 buildHaskellChar       = formSimpleHsObjRaw'
 
--- String is provided by C caller as Ptr to UTF16 and a length (in double-byte words).
+-- String is provided by C caller as Ptr to UTF8 and a length (in double-byte words).
 
-foreign export ccall buildHaskellString     :: Ptr Word16 -> Int -> IO PyObj
+foreign export ccall buildHaskellString     :: CString -> Int -> IO PyObj
 buildHaskellString buf len   = captureAsyncExceptions_PyObjReturn_ (
-  formSimpleHsObjRaw . T.unpack
-  =<< Data.Text.Foreign.fromPtr buf (fromInteger . toInteger $ len))
+  formSimpleHsObjRaw . Data.Text.Encoding.decodeUtf8
+  =<< Data.ByteString.packCStringLen (buf, len))
 
--- String is provided by C caller as Ptr to UTF16 and a length (in double-byte words).
+-- String is provided by C caller as Ptr to UTF8 and a length (in double-byte words).
 
-foreign export ccall buildHaskellText       :: Ptr Word16 -> Int -> IO PyObj
+foreign export ccall buildHaskellText       :: CString -> Int -> IO PyObj
 buildHaskellText buf len     = captureAsyncExceptions_PyObjReturn_ (
-  formSimpleHsObjRaw
-  =<< Data.Text.Foreign.fromPtr buf (fromInteger . toInteger $ len))
+  formSimpleHsObjRaw . Data.Text.Encoding.decodeUtf8
+  =<< Data.ByteString.packCStringLen (buf, len))
 
 -- String is provided by C caller as Ptr to bytes and a length (in bytes).
 
