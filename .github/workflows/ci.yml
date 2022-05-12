@@ -50,7 +50,7 @@ jobs:
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
-        resolver: ["lts-16.31", "lts-18.23", "nightly-2021-11-06"] # GHC 8.8, 8.10, 9.0
+        resolver: ["lts-16.31", "lts-18.28", "lts-19.6"] # GHC 8.8, 8.10, 9.0
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.4
