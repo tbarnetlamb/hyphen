@@ -54,6 +54,9 @@ jobs:
         exclude:
           - os: macos-latest
             resolver: "lts-19.10" # This resolver seems buggy on MacOS
+        exclude:
+          - os: macos-latest
+            resolver: "nightly-2022-06-06" # This resolver seems buggy on MacOS
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.4
