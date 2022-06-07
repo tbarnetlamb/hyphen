@@ -262,6 +262,7 @@ createGHCSession = do
   return session
 
 #if __GLASGOW_HASKELL__ >= 902
+isLiftedRuntimeRep = GHC.Core.Type.isLiftedRuntimeRep
 #elif __GLASGOW_HASKELL__ >= 802
 isLiftedRuntimeRep arg
   | Just (tc, []) <- GHCType.splitTyConApp_maybe arg
@@ -272,10 +273,7 @@ isLiftedRuntimeRep arg
 
 makeDePolyGHCKindChecker :: GHC.TyVar -> Maybe (GHC.Type -> Bool, GHC.Type)
 makeDePolyGHCKindChecker v
-#if __GLASGOW_HASKELL__ >= 902
-  | GHCType.isRuntimeRepVar v
-               = Just (GHC.Core.Type.isLiftedRuntimeRep, GHCTysWiredIn.liftedRepTy)
-#elif __GLASGOW_HASKELL__ >= 802
+#if __GLASGOW_HASKELL__ >= 802
   | GHCType.isRuntimeRepVar v
                = Just (isLiftedRuntimeRep, GHCTysWiredIn.liftedRepTy)
 #endif
