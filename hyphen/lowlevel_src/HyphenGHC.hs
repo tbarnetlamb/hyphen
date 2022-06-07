@@ -27,7 +27,9 @@ import qualified Data.Traversable
 import qualified Unsafe.Coerce
 import qualified GHC
 import qualified GHC.Paths
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 902
+import qualified GHC.Builtin.Types    as GHCTysWiredIn
+#elif __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Builtin.Names    as GHCPrelNames
 import qualified GHC.Builtin.Types    as GHCTysWiredIn
 #elif __GLASGOW_HASKELL__ >= 802
