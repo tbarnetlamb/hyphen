@@ -488,7 +488,11 @@ transformGHCType n ivt = transformGHCType' (PreTycLoc n ivt []). GHCType.expandT
 
 transformGHCType' :: PreTycLoc -> GHC.Type -> Maybe HsType
 transformGHCType' locSoFar typ
+#if __GLASGOW_HASKELL__ >= 902
+  = let (vars,   rest)  = GHC.splitForAllTyCoVars typ
+#else
   = let (vars,   rest)  = GHC.splitForAllTys typ
+#endif
     in case splitConstraint rest of
       (Just c, rest') -> transformGHCType' locSoFar rest'
       (Nothing, _)    -> case GHCType.splitTyConApp_maybe rest of
