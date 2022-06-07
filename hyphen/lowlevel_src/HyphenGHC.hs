@@ -27,7 +27,9 @@ import qualified Data.Traversable
 import qualified Unsafe.Coerce
 import qualified GHC
 import qualified GHC.Paths
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 902
+import qualified GHC.Builtin.Types    as GHCTysWiredIn
+#elif __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Builtin.Names    as GHCPrelNames
 import qualified GHC.Builtin.Types    as GHCTysWiredIn
 #elif __GLASGOW_HASKELL__ >= 802
@@ -63,6 +65,19 @@ import qualified Type        as GHCKind
 #elif __GLASGOW_HASKELL__ >= 800
 import qualified Kind        as GHCKind
 #endif
+#if __GLASGOW_HASKELL__ >= 902
+import qualified GHC.Types.SourceError
+import qualified GHC.Types.Target
+import qualified GHC.Unit.Module.Graph
+import qualified GHC.Unit.Module.ModSummary
+import qualified GHC.Types.TyThing         as GHCType
+import qualified GHC.Core.Type
+#elif __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Driver.Types      as GHCHscTypes
+import qualified GHC.Driver.Types
+#else
+import qualified HscTypes    as GHCHscTypes
+#endif
 #if __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Core.Type         as GHCType
 import qualified GHC.Driver.Session    as GHCDynFlags
@@ -70,8 +85,6 @@ import qualified GHC.Driver.Main       as GHCHscMain
 import qualified GHC.Utils.Monad       as GHCMonadUtils
 import qualified GHC.Types.Var         as GHCVar
 import qualified Control.Monad.Catch as MC
-import qualified GHC.Driver.Types      as GHCHscTypes
-import qualified GHC.Driver.Types
 #else
 import qualified Type        as GHCType
 import qualified DynFlags    as GHCDynFlags
@@ -81,7 +94,6 @@ import qualified Var         as GHCVar
 import qualified Outputable  as GHCOutputable
 import qualified ErrUtils    as GHCErrUtils
 import qualified Exception   as GHCException
-import qualified HscTypes    as GHCHscTypes
 #endif
 #if __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Core.ConLike     as GHCConLike
@@ -192,7 +204,9 @@ reportingGHCErrors msgHint action = do
   let prep  = GHC.setSessionDynFlags $ dflags { GHCDynFlags.log_action = logHandler logref }
 #endif
       clean = GHC.setSessionDynFlags dflags
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 902
+      handler :: GHC.Types.SourceError.SourceError -> GhcMonad.Ghc a
+#elif __GLASGOW_HASKELL__ >= 900
       handler :: GHC.Driver.Types.SourceError -> GhcMonad.Ghc a
 #else
       handler :: GHCHscTypes.SourceError -> GhcMonad.Ghc a
@@ -249,7 +263,9 @@ createGHCSession = do
     ensureModulesInContext $ Set.fromList [T.pack "Prelude"])
   return session
 
-#if __GLASGOW_HASKELL__ >= 802
+#if __GLASGOW_HASKELL__ >= 902
+isLiftedRuntimeRep = GHC.Core.Type.isLiftedRuntimeRep
+#elif __GLASGOW_HASKELL__ >= 802
 isLiftedRuntimeRep arg
   | Just (tc, []) <- GHCType.splitTyConApp_maybe arg
   , Just dc       <- GHCTyCon.isPromotedDataCon_maybe tc
@@ -271,7 +287,11 @@ makeDePolyGHCKindChecker v
 
 dePolyGHCKind :: GHC.Kind -> Maybe (GHC.Kind, [GHC.Type -> Bool])
 dePolyGHCKind k =
+#if __GLASGOW_HASKELL__ >= 902
+  do let (vars, rest)  = GHC.splitForAllTyCoVars k
+#else
   do let (vars, rest)  = GHC.splitForAllTys k
+#endif
      checkers <- mapM makeDePolyGHCKindChecker vars
      return (GHCType.substTyWith vars (map snd checkers) rest,
              map fst checkers)
@@ -468,7 +488,11 @@ transformGHCType n ivt = transformGHCType' (PreTycLoc n ivt []). GHCType.expandT
 
 transformGHCType' :: PreTycLoc -> GHC.Type -> Maybe HsType
 transformGHCType' locSoFar typ
+#if __GLASGOW_HASKELL__ >= 902
+  = let (vars,   rest)  = GHC.splitForAllTyCoVars typ
+#else
   = let (vars,   rest)  = GHC.splitForAllTys typ
+#endif
     in case splitConstraint rest of
       (Just c, rest') -> transformGHCType' locSoFar rest'
       (Nothing, _)    -> case GHCType.splitTyConApp_maybe rest of
@@ -879,11 +903,20 @@ importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
   HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))
 importSrcModules sess paths = do
   srcModuleNames <- performGHCOps Nothing sess $ do
+#if __GLASGOW_HASKELL__ >= 902
+    GHC.setTargets [GHC.Types.Target.Target {
+                       GHC.Types.Target.targetId = GHC.Types.Target.TargetFile (T.unpack path) Nothing,
+                       GHC.Types.Target.targetAllowObjCode = True,
+                       GHC.Types.Target.targetContents     = Nothing}             | path <- paths]
+#else
     GHC.setTargets [GHCHscTypes.Target {
                        GHCHscTypes.targetId = GHCHscTypes.TargetFile (T.unpack path) Nothing,
                        GHCHscTypes.targetAllowObjCode = True,
                        GHCHscTypes.targetContents     = Nothing}             | path <- paths]
-#if __GLASGOW_HASKELL__ >= 804
+#endif
+#if __GLASGOW_HASKELL__ >= 902
+    moduleGraph <- liftM GHC.Unit.Module.Graph.mgModSummaries $ GHC.depanal [] True
+#elif __GLASGOW_HASKELL__ >= 804
     moduleGraph <- liftM GHCHscTypes.mgModSummaries $ GHC.depanal [] True
 #else
     moduleGraph <- GHC.depanal [] True
@@ -893,7 +926,10 @@ importSrcModules sess paths = do
     GHC.setContext curiis
     case loadOK of
       GHC.Succeeded ->
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 902
+        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+                . GHCModule.moduleName . GHC.Unit.Module.ModSummary.ms_mod $ ms | ms <- moduleGraph]
+#elif __GLASGOW_HASKELL__ >= 900
         return [T.pack . GHC.Unit.Module.Name.moduleNameString
                 . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
 #else
