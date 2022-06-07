@@ -66,6 +66,10 @@ import qualified Kind        as GHCKind
 #if __GLASGOW_HASKELL__ >= 902
 import qualified GHC.Types.SourceError
 import qualified GHC.Types.Target
+import qualified GHC.Unit.Module.Graph
+import qualified GHC.Unit.Module.ModSummary
+import qualified GHC.Types.TyThing         as GHCType
+import qualified GHC.Core.Type
 #elif __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Driver.Types      as GHCHscTypes
 import qualified GHC.Driver.Types
@@ -257,7 +261,8 @@ createGHCSession = do
     ensureModulesInContext $ Set.fromList [T.pack "Prelude"])
   return session
 
-#if __GLASGOW_HASKELL__ >= 802
+#if __GLASGOW_HASKELL__ >= 902
+#elif __GLASGOW_HASKELL__ >= 802
 isLiftedRuntimeRep arg
   | Just (tc, []) <- GHCType.splitTyConApp_maybe arg
   , Just dc       <- GHCTyCon.isPromotedDataCon_maybe tc
@@ -267,9 +272,12 @@ isLiftedRuntimeRep arg
 
 makeDePolyGHCKindChecker :: GHC.TyVar -> Maybe (GHC.Type -> Bool, GHC.Type)
 makeDePolyGHCKindChecker v
-#if __GLASGOW_HASKELL__ >= 802
+#if __GLASGOW_HASKELL__ >= 902
   | GHCType.isRuntimeRepVar v
                = Just (isLiftedRuntimeRep, GHCTysWiredIn.liftedRepTy)
+#elif __GLASGOW_HASKELL__ >= 802
+  | GHCType.isRuntimeRepVar v
+               = Just (GHC.Core.Type.isLiftedRuntimeRep, GHCTysWiredIn.liftedRepTy)
 #endif
 #if __GLASGOW_HASKELL__ >= 800
   | GHCKind.isLiftedTypeKind (GHCType.tyVarKind v)
@@ -279,7 +287,11 @@ makeDePolyGHCKindChecker v
 
 dePolyGHCKind :: GHC.Kind -> Maybe (GHC.Kind, [GHC.Type -> Bool])
 dePolyGHCKind k =
+#if __GLASGOW_HASKELL__ >= 902
+  do let (vars, rest)  = GHC.splitForAllTyCoVars k
+#else
   do let (vars, rest)  = GHC.splitForAllTys k
+#endif
      checkers <- mapM makeDePolyGHCKindChecker vars
      return (GHCType.substTyWith vars (map snd checkers) rest,
              map fst checkers)
@@ -898,7 +910,9 @@ importSrcModules sess paths = do
                        GHCHscTypes.targetAllowObjCode = True,
                        GHCHscTypes.targetContents     = Nothing}             | path <- paths]
 #endif
-#if __GLASGOW_HASKELL__ >= 804
+#if __GLASGOW_HASKELL__ >= 902
+    moduleGraph <- liftM GHC.Unit.Module.Graph.mgModSummaries $ GHC.depanal [] True
+#elif __GLASGOW_HASKELL__ >= 804
     moduleGraph <- liftM GHCHscTypes.mgModSummaries $ GHC.depanal [] True
 #else
     moduleGraph <- GHC.depanal [] True
@@ -908,7 +922,10 @@ importSrcModules sess paths = do
     GHC.setContext curiis
     case loadOK of
       GHC.Succeeded ->
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 902
+        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+                . GHCModule.moduleName . GHC.Unit.Module.ModSummary.ms_mod $ ms | ms <- moduleGraph]
+#elif __GLASGOW_HASKELL__ >= 900
         return [T.pack . GHC.Unit.Module.Name.moduleNameString
                 . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
 #else
