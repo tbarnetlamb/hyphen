@@ -11,7 +11,7 @@ a) Haskell modules have *two* namespaces [1]; a type/type constructor
 namespace and a plain object namespace, and it is possible to have the
 same name defined in both namespaces (although because of
 capitalization rules, the object in this case will necessarily be a
-Data constructor). Python has onyl a single namespace, so we must
+Data constructor). Python has only a single namespace, so we must
 somehow resolve this contention. (We generally do this by creating a
 lightweight 'doublet' object; then you can do MyName.the_tycon or
 MyName.the_dacon to specify exactly what you mean. There is one
