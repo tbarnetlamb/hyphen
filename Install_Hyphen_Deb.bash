@@ -1,6 +1,7 @@
 #!/bin/bash
 
 #This script is for Debian based linux versions, Sudo expected, tested on ubuntu 22.04.1, runs up to line 25
+#Hopefully we can create this, but for the other platforms as well.
 
 
 #Ensure Python3 is installed with dev packages
