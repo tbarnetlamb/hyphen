@@ -87,6 +87,9 @@ Finally, you should be able to do `build-extn.py` as per the general instruction
 Ubuntu
 ------
 
+After downloading, you should just be able to run `Install_Hyphen_deb.bash' 
+and it will take care of all of this.
+
 Before you build, you obviously need to make sure you have python3 and
 ghc installed. You also need to make sure you have the ghc-dynamic
 package (necessary to allow ghc to build and use dynamic modules) and
