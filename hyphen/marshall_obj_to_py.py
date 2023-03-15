@@ -136,6 +136,6 @@ def hs_to_py(obj):
     # nice python type).
     tyc_class = hyphen.marshall_ctor.marshall_tycon(tycon)
     if tyc_class is None:
-        return hslowlevel.HsObjRaw.__new__(HsObj, obj)
+        return hslowlevel.HsObjRaw.__new__(hyphen.HsObj, obj)
     else:
         return tyc_class.interpret(obj)
