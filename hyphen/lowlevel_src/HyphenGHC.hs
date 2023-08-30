@@ -372,8 +372,6 @@ newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
              (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
 normalizeTyCon :: TyCon -> TyCon
 normalizeTyCon tyc | tyc == newFnTyCon = fnTyCon
-normalizeTyCon tyc | tyConModule tyc == T.pack "Data.ByteString.Internal.Type" 
-                                       = tyc {tyConModule = T.pack "Data.ByteString.Internal"}
 normalizeTyCon tyc | otherwise         = tyc
 #else
 normalizeTyCon :: TyCon -> TyCon
