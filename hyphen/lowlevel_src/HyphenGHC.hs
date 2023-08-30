@@ -316,8 +316,8 @@ unpackSimpleGHCKind k
 
 -- The basic process of importing Haskell names splits into three
 -- steps. In the first step, we invoke GHCI to read the module and we
--- get it's contents in a GHCI-y format: as a bunch of TyThings. This
--- is not pure; it takes place in teh Ghc monad. The second step
+-- get its contents in a GHCI-y format: as a bunch of TyThings. This
+-- is not pure; it takes place in the Ghc monad. The second step
 -- consists of converting these into 'PreObjs' and 'TyNSElts'
 -- (representing things in the object and type namespace
 -- respectively). This second step is pure. It basically consists of
@@ -366,12 +366,15 @@ readGHCModule name = do
 -- module: converting TyThings into PreObjs and TyNSElts
 
 #if __GLASGOW_HASKELL__ >= 806
--- The constructor fo the function type was officially renamed in GHC 8.6
+-- The constructor for the function type was officially renamed in GHC 8.6
 -- We want to undo the effect of this renaming
 newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
              (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
 normalizeTyCon :: TyCon -> TyCon
-normalizeTyCon tyc = if tyc == newFnTyCon then fnTyCon else tyc
+normalizeTyCon tyc | tyc == newFnTyCon = fnTyCon
+normalizeTyCon tyc | tyConModule tyc == "Data.ByteString.Internal.Type" 
+                                       = tyc {tyConModule = "Data.ByteString.Internal"}
+normalizeTyCon tyc | otherwise         = tyc
 #else
 normalizeTyCon :: TyCon -> TyCon
 normalizeTyCon = id
