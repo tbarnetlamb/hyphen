@@ -52,9 +52,9 @@ jobs:
         bootstrap_ghc: ["8.10.5"]
          # GHC        7.10,       8.0,        8.2,         8.4,          8.6,         8.8,         8.10,         9.0,        9.2
         resolver: ["lts-6.35", "lts-9.21", "lts-11.22", "lts-12.26", "lts-16.31", "lts-14.27", "lts-18.28", "lts-19.33", "lts-20.26"]
-        #exclude:
-        #  - os: macos-latest
-        #    resolver: "lts-19.10" # This resolver seems buggy on MacOS
+        exclude:
+          - os: macos-latest
+            resolver: "lts-19.33" # This resolver seems buggy on MacOS
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.4
