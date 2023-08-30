@@ -55,6 +55,9 @@ jobs:
         exclude:
           - os: macos-latest
             resolver: "lts-19.33" # This resolver seems buggy on MacOS
+        exclude:
+          - os: macos-latest
+            resolver: "lts-20.26" # This resolver seems buggy on MacOS
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.4
