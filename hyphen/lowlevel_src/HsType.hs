@@ -415,7 +415,7 @@ typeHeadForcerRenames :: HashMap (Text, Text) Text
 typeHeadForcerRenames = HashMap.fromList $ map ((T.pack *** T.pack) *** T.pack) $ [
 #if __GLASGOW_HASKELL__ >= 808
   (("GHC.Integer.Type", "Integer"), ("GHC.Integer.Integer")),
-  (("Data.ByteString.Internal.Type", "ByteString"), ("Data.ByteString.Internal.ByteStringx"))
+  (("Data.ByteString.Internal.Type", "ByteString"), ("Data.ByteString.Internal.ByteString"))
 #endif
   ]
 
