@@ -905,7 +905,7 @@ importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
 importSrcModules sess paths = do
   srcModuleNames <- performGHCOps Nothing sess $ do
 #if __GLASGOW_HASKELL__ >= 904
-    dflags <- getSessionDynFlags
+    dflags <- GhcMonad.getSessionDynFlags
     GHC.setTargets [GHC.Types.Target.Target {
                        GHC.Types.Target.targetId = GHC.Types.Target.TargetFile (T.unpack path) Nothing,
                        GHC.Types.Target.targetAllowObjCode = True,
