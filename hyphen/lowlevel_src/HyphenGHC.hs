@@ -65,6 +65,9 @@ import qualified Type        as GHCKind
 #elif __GLASGOW_HASKELL__ >= 800
 import qualified Kind        as GHCKind
 #endif
+#if __GLASGOW_HASKELL__ >= 904
+import qualified GHC.Driver.DynFlags
+#endif
 #if __GLASGOW_HASKELL__ >= 902
 import qualified GHC.Types.SourceError
 import qualified GHC.Types.Target
@@ -904,7 +907,14 @@ importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
   HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))
 importSrcModules sess paths = do
   srcModuleNames <- performGHCOps Nothing sess $ do
-#if __GLASGOW_HASKELL__ >= 902
+#if __GLASGOW_HASKELL__ >= 904
+    dflags <- getSessionDynFlags
+    GHC.setTargets [GHC.Types.Target.Target {
+                       GHC.Types.Target.targetId = GHC.Types.Target.TargetFile (T.unpack path) Nothing,
+                       GHC.Types.Target.targetAllowObjCode = True,
+                       GHC.Types.Target.targetUnitId       = GHC.Driver.DynFlags.homeUnitId_ dflags,
+                       GHC.Types.Target.targetContents     = Nothing}             | path <- paths]
+#elif __GLASGOW_HASKELL__ >= 902
     GHC.setTargets [GHC.Types.Target.Target {
                        GHC.Types.Target.targetId = GHC.Types.Target.TargetFile (T.unpack path) Nothing,
                        GHC.Types.Target.targetAllowObjCode = True,
