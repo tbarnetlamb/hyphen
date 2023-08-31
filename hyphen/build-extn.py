@@ -83,12 +83,12 @@ if int(ghc_ver.split('.')[0]) < 9:
     final_part = {'dynamic' : '-ghc' + ghc_ver,
                   'static'  : ''              }[opts.dyn_or_static]
     HSrts_lib  = 'HSrts' + thrd_part + final_part
-    py_include = sysconfig.get_paths()['include']
-    py_libdir  = sysconfig.get_config_var('LIBDIR')
-    suffix     = sysconfig.get_config_var('EXT_SUFFIX')
     link_to_rts_option = '-l' + HSrts_lib
 else:
     link_to_rts_option = '-flink-rts'
+py_include = sysconfig.get_paths()['include']
+py_libdir  = sysconfig.get_config_var('LIBDIR')
+suffix     = sysconfig.get_config_var('EXT_SUFFIX')
 
 hyphen_c   = 'hyphen_c.' + ('c' if sys.platform[:6] != 'cygwin' else 'o')
 if sys.platform[:6] == 'cygwin':
