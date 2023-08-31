@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, distutils.sysconfig, os, os.path, subprocess, optparse
+import sys, sysconfig, os, os.path, subprocess, optparse
 
 if sys.hexversion >> 24 < 3:
     print("Python 3.x required")
@@ -82,9 +82,9 @@ thrd_part  = {'threaded'    : '_thr',
 final_part = {'dynamic' : '-ghc' + ghc_ver,
               'static'  : ''              }[opts.dyn_or_static]
 HSrts_lib  = 'HSrts' + thrd_part + final_part
-py_include = distutils.sysconfig.get_python_inc()
-py_libdir  = distutils.sysconfig.get_config_var('LIBDIR')
-suffix     = distutils.sysconfig.get_config_var('EXT_SUFFIX')
+py_include = sysconfig.get_paths()['include']
+py_libdir  = sysconfig.get_config_var('LIBDIR')
+suffix     = sysconfig.get_config_var('EXT_SUFFIX')
 
 hyphen_c   = 'hyphen_c.' + ('c' if sys.platform[:6] != 'cygwin' else 'o')
 if sys.platform[:6] == 'cygwin':
