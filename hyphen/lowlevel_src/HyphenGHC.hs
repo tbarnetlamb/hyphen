@@ -139,7 +139,7 @@ ourInitGhcMonad mb_top_dir = do
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
   dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
                   GHCDynFlags.defaultDynFlags mySettings))
-#if __GLASGOW_HASKELL__ >= 810
+#elif __GLASGOW_HASKELL__ >= 810
   top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
   llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.lazyInitLlvmConfig top_dir
