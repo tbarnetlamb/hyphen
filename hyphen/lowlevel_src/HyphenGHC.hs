@@ -48,7 +48,7 @@ import qualified GHC.SysTools.BaseDir as GHCSysToolsBaseDir
 #elif __GLASGOW_HASKELL__ >= 808
 import qualified SysTools.BaseDir as GHCSysToolsBaseDir
 #endif
-#if __GLASGOW_HASKELL__ >= 960
+#if __GLASGOW_HASKELL__ >= 906
 import qualified Language.Haskell.Syntax.Module.Name as GHCModuleName
 #elif __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Unit.Module.Name as GHCModuleName
