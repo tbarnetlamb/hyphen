@@ -48,11 +48,15 @@ import qualified GHC.SysTools.BaseDir as GHCSysToolsBaseDir
 #elif __GLASGOW_HASKELL__ >= 808
 import qualified SysTools.BaseDir as GHCSysToolsBaseDir
 #endif
+#if __GLASGOW_HASKELL__ >= 960
+import qualified Language.Haskell.Syntax.Module.Name as GHCModuleName
+#elif __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Unit.Module.Name as GHCModuleName
+#endif
 #if __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Core.TyCon       as GHCTyCon
 import qualified GHC.Types.Name.Occurrence     as GHCOccName
 import qualified GHC.Unit.Types      as GHCModule
-import qualified GHC.Unit.Module.Name
 #else
 import qualified TyCon       as GHCTyCon
 import qualified OccName     as GHCOccName
@@ -935,10 +939,10 @@ importSrcModules sess paths = do
     case loadOK of
       GHC.Succeeded ->
 #if __GLASGOW_HASKELL__ >= 902
-        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+        return [T.pack . GHCModuleName.moduleNameString
                 . GHCModule.moduleName . GHC.Unit.Module.ModSummary.ms_mod $ ms | ms <- moduleGraph]
 #elif __GLASGOW_HASKELL__ >= 900
-        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+        return [T.pack . GHCModuleName.moduleNameString
                 . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
 #else
         return [T.pack . GHCModule.moduleNameString
