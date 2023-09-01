@@ -134,6 +134,11 @@ ourInitGhcMonad mb_top_dir = do
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
 #endif
 
+#if __GLASGOW_HASKELL__ >= 906
+  top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings))
 #if __GLASGOW_HASKELL__ >= 810
   top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
@@ -390,7 +395,8 @@ normalizeTyCon = id
 -- Maybe TyCLocation.
 
 transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe (TyCon, [GHC.Type -> Bool])
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 906
+#elif __GLASGOW_HASKELL__ >= 900
 transformGHCTyc _ tyc | GHC.isFunTyCon tyc  = Just (fnTyCon, [const True, isLiftedRuntimeRep, isLiftedRuntimeRep])
 #endif
 transformGHCTyc loc tyc = do
@@ -544,7 +550,10 @@ transformGHCTyVar tyv = do
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 906
+  Just (_, src, dest) -> if GHCType.isConstraintKind (GHCType.typeKind src)
+                            then (Just src, dest) else (Nothing, ty)
+#elif __GLASGOW_HASKELL__ >= 900
   Just (_, src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
                             then (Just src, dest) else (Nothing, ty)
 #elif __GLASGOW_HASKELL__ >= 806
