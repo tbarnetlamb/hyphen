@@ -904,7 +904,14 @@ importSrcModules :: GhcMonad.Session -> [Text] -> PythonM (
   HashMap Text (HashMap Text HsObj, HashMap Text TyNSElt))
 importSrcModules sess paths = do
   srcModuleNames <- performGHCOps Nothing sess $ do
-#if __GLASGOW_HASKELL__ >= 902
+#if __GLASGOW_HASKELL__ >= 904
+    dflags <- GhcMonad.getSessionDynFlags
+    GHC.setTargets [GHC.Types.Target.Target {
+                       GHC.Types.Target.targetId = GHC.Types.Target.TargetFile (T.unpack path) Nothing,
+                       GHC.Types.Target.targetAllowObjCode = True,
+                       GHC.Types.Target.targetUnitId       = GHCDynFlags.homeUnitId_ dflags,
+                       GHC.Types.Target.targetContents     = Nothing}             | path <- paths]
+#elif __GLASGOW_HASKELL__ >= 902
     GHC.setTargets [GHC.Types.Target.Target {
                        GHC.Types.Target.targetId = GHC.Types.Target.TargetFile (T.unpack path) Nothing,
                        GHC.Types.Target.targetAllowObjCode = True,

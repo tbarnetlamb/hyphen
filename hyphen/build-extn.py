@@ -77,11 +77,17 @@ def cygpreppath(path):
 opts       = getopts()
 work_dir   = sys.path[0]
 ghc_ver    = subprocess.check_output(['ghc', '--numeric-version']).decode('ascii')
-thrd_part  = {'threaded'    : '_thr',
-              'not-threaded' : ''   }[opts.threaded_or_not]
-final_part = {'dynamic' : '-ghc' + ghc_ver,
-              'static'  : ''              }[opts.dyn_or_static]
-HSrts_lib  = 'HSrts' + thrd_part + final_part
+if int(ghc_ver.split('.')[0]) < 9:
+    thrd_part  = {'threaded'    : '_thr',
+                  'not-threaded' : ''   }[opts.threaded_or_not]
+    final_part = {'dynamic' : '-ghc' + ghc_ver,
+                  'static'  : ''              }[opts.dyn_or_static]
+    HSrts_lib  = 'HSrts' + thrd_part + final_part
+    link_to_rts_option = ['-l' + HSrts_lib]
+else:
+    threaded_part = {'threaded'     : ['-threaded'],
+                     'not-threaded' : []          }[opts.threaded_or_not]
+    link_to_rts_option = ['-flink-rts'] + threaded_part
 py_include = sysconfig.get_paths()['include']
 py_libdir  = sysconfig.get_config_var('LIBDIR')
 suffix     = sysconfig.get_config_var('EXT_SUFFIX')
@@ -124,7 +130,7 @@ invocation = flatten([
     '-package', 'ghc',
 
     # Linker libraries
-    '-l' + HSrts_lib, '-l' + pylib(),
+    link_to_rts_option, '-l' + pylib(),
 ])
 
 subprocess.check_call(invocation + ['-no-link'])
