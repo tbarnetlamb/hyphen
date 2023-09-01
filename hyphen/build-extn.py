@@ -83,9 +83,11 @@ if int(ghc_ver.split('.')[0]) < 9:
     final_part = {'dynamic' : '-ghc' + ghc_ver,
                   'static'  : ''              }[opts.dyn_or_static]
     HSrts_lib  = 'HSrts' + thrd_part + final_part
-    link_to_rts_option = '-l' + HSrts_lib
+    link_to_rts_option = ['-l' + HSrts_lib]
 else:
-    link_to_rts_option = '-flink-rts'
+    threaded_part = {'threaded'     : ['threaded'],
+                     'not-threaded' : []          }[opts.threaded_or_not]
+    link_to_rts_option = ['-flink-rts'] + threaded_part
 py_include = sysconfig.get_paths()['include']
 py_libdir  = sysconfig.get_config_var('LIBDIR')
 suffix     = sysconfig.get_config_var('EXT_SUFFIX')
