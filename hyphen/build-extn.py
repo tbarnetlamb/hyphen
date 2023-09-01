@@ -85,7 +85,7 @@ if int(ghc_ver.split('.')[0]) < 9:
     HSrts_lib  = 'HSrts' + thrd_part + final_part
     link_to_rts_option = ['-l' + HSrts_lib]
 else:
-    threaded_part = {'threaded'     : ['--threaded'],
+    threaded_part = {'threaded'     : ['-threaded'],
                      'not-threaded' : []          }[opts.threaded_or_not]
     link_to_rts_option = ['-flink-rts'] + threaded_part
 py_include = sysconfig.get_paths()['include']
