@@ -179,7 +179,8 @@ ioTyCon   = tyConFromTypeableTyCon (simplKnd 1) . typeRepTyCon . typeOf $ putCha
 -- | TyCon object representing the Haskell type constructor @[]@ for lists
 
 listTyCon :: TyCon
-listTyCon = tyConFromTypeableTyCon (simplKnd 1) . typeRepTyCon . typeOf $ [""]
+listTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Types") (T.pack "[]")
+            (InExplicitModuleNamed $ T.pack "GHC.Types") (simplKnd 1) False
 
 -- | Is the TyCon provided a representation of the built in type
 -- constructor for lists?
