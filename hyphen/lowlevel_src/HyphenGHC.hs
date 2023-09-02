@@ -15,7 +15,7 @@ import Data.Monoid ()
 import Data.Maybe
 import Data.Either
 import Data.List
-import Data.Trace
+import Debug.Trace
 import Data.Text                      (Text)
 import Data.Set                       (Set)
 import Data.HashMap.Strict            (HashMap)
