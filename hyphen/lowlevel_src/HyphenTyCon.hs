@@ -190,8 +190,7 @@ tyConFromTypeableTyCon knd ghcTyc
 
 exceptionalLookups :: Map (Text, Text) (Text,Text)
 exceptionalLookups = Map.fromList . map ((T.pack *** T.pack) *** (T.pack *** T.pack)) $ [
-  (("integer-gmp", "GHC.Integer.Type"), ("integer-gmp", "GHC.Integer")),
-  (("ghc-prim", "GHC.Tuple.Prim"), ("ghc-prim", "GHC.Tuple"))
+  (("integer-gmp", "GHC.Integer.Type"), ("integer-gmp", "GHC.Integer"))
   ]
 
 -- | TyCon object representing the Haskell function type constructor @(->)@
