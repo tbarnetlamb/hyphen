@@ -440,16 +440,16 @@ transformGHCTyNSElt import_module tyc = let
   in case GHCTyCon.tcExpandTyCon_maybe tyc args of
 #endif
 #if __GLASGOW_HASKELL__ >= 906
-    NoExpansion -> do
+    GHCTyCon.NoExpansion -> do
 #else
     Nothing -> do
 #endif
       (tyc', _) <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
       return (if tyc' == fnTyCon then T.pack "(->)" else oname, Left tyc')
 #if __GLASGOW_HASKELL__ >= 906
-    Just (assigs, expansion, leftoverVars) -> case leftoverVars of
+    GHCTyCon.ExpandsSyn assigs expansion leftoverVars -> case leftoverVars of
 #else
-    ExpandsSyn assigs expansion leftoverVars -> case leftoverVars of
+    Just (assigs, expansion, leftoverVars) -> case leftoverVars of
 #endif
       (_:_) -> error "transformGHCTyNSElt: unexpected leftover vars"
       []    -> do let doAssig (tyv, var) = do ((tyv', k), _) <- transformGHCTyVar tyv
