@@ -562,8 +562,8 @@ splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
 #if __GLASGOW_HASKELL__ >= 906
-  Just (_, src, dest) -> if GHCType.isConstraintKind (GHCType.typeKind src)
-                            then (Just src, dest) else (Nothing, ty)
+  Just (_, _, src, dest) -> if GHCType.isConstraintKind (GHCType.typeKind src)
+                               then (Just src, dest) else (Nothing, ty)
 #elif __GLASGOW_HASKELL__ >= 900
   Just (_, src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
                             then (Just src, dest) else (Nothing, ty)
