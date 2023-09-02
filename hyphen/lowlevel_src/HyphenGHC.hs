@@ -381,17 +381,28 @@ readGHCModule name = do
 -- module: converting TyThings into PreObjs and TyNSElts
 
 #if __GLASGOW_HASKELL__ >= 806
--- The constructor for the function type was officially renamed in GHC 8.6
--- We want to undo the effect of this renaming
 newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
              (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
-normalizeTyCon :: TyCon -> TyCon
-normalizeTyCon tyc | tyc == newFnTyCon = fnTyCon
-normalizeTyCon tyc | otherwise         = tyc
-#else
-normalizeTyCon :: TyCon -> TyCon
-normalizeTyCon = id
 #endif
+
+#if __GLASGOW_HASKELL__ >= 906
+newListTyCon :: TyCon
+newListTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Types") (T.pack "List")
+               (InExplicitModuleNamed $ T.pack "GHC.Types") (simplKnd 1) False
+#endif
+
+normalizeTyCon :: TyCon -> TyCon
+#if __GLASGOW_HASKELL__ >= 906
+-- The constructor for the list type was officially renamed in GHC 9.6
+-- We want to undo the effect of this renaming
+normalizeTyCon tyc | tyc == newListTyCon = listTyCon
+#endif
+#if __GLASGOW_HASKELL__ >= 806
+-- The constructor for the function type was officially renamed in GHC 8.6
+-- We want to undo the effect of this renaming
+normalizeTyCon tyc | tyc == newFnTyCon = fnTyCon
+#endif
+normalizeTyCon tyc | otherwise         = tyc
 
 -- | Convert a Data constructor into a TyCon, if we can. (We can't if,
 -- say, it uses unboxed types or something like that.) We usually
