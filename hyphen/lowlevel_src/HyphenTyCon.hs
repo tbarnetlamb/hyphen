@@ -141,6 +141,34 @@ tyConRepr = tyConRepr' False
 tyConArity :: TyCon -> Int
 tyConArity = length . kindArgKinds . tyConKind
 
+-- | Handing for type renames
+
+#if __GLASGOW_HASKELL__ >= 806
+newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
+             (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
+#endif
+
+#if __GLASGOW_HASKELL__ >= 906
+oldListTyCon, newListTyCon :: TyCon
+newListTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Types") (T.pack "List")
+               (InExplicitModuleNamed $ T.pack "GHC.Types") (simplKnd 1) False
+oldListTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Types") (T.pack "[]")
+               (InExplicitModuleNamed $ T.pack "GHC.Types") (simplKnd 1) False
+#endif
+
+normalizeTyCon :: TyCon -> TyCon
+#if __GLASGOW_HASKELL__ >= 906
+-- The constructor for the list type was officially renamed in GHC 9.6
+-- We want to undo the effect of this renaming
+normalizeTyCon tyc | tyc == newListTyCon = oldListTyCon
+#endif
+#if __GLASGOW_HASKELL__ >= 806
+-- The constructor for the function type was officially renamed in GHC 8.6
+-- We want to undo the effect of this renaming
+normalizeTyCon tyc | tyc == newFnTyCon = fnTyCon
+#endif
+normalizeTyCon tyc | otherwise         = tyc
+
 -- | Construct a TyCon from a Data.Typeable.TyCon and a Kind. This
 -- generally assumes that the module that defines the TyCon in
 -- question acutally exports it, which is not actually a safe
@@ -156,7 +184,7 @@ tyConFromTypeableTyCon knd ghcTyc
           Data.Typeable.tyConPackage ghcTyc, Data.Typeable.tyConModule ghcTyc,
           Data.Typeable.tyConName ghcTyc]
         (p, m) = Map.findWithDefault (p0, m0) (p0, m0) exceptionalLookups
-    in mkTyCon p m0 n (InExplicitModuleNamed m) knd False
+    in normalizeTyCon $ mkTyCon p m0 n (InExplicitModuleNamed m) knd False
 
 -- | See description of tyConFromTypeableTyCon above
 

@@ -27,6 +27,9 @@ import qualified Data.Traversable
 import qualified Unsafe.Coerce
 import qualified GHC
 import qualified GHC.Paths
+#if __GLASGOW_HASKELL__ >= 906
+import qualified GHC.Builtin.Types.Prim
+#endif
 #if __GLASGOW_HASKELL__ >= 902
 import qualified GHC.Builtin.Types    as GHCTysWiredIn
 #elif __GLASGOW_HASKELL__ >= 900
@@ -48,11 +51,15 @@ import qualified GHC.SysTools.BaseDir as GHCSysToolsBaseDir
 #elif __GLASGOW_HASKELL__ >= 808
 import qualified SysTools.BaseDir as GHCSysToolsBaseDir
 #endif
+#if __GLASGOW_HASKELL__ >= 906
+import qualified Language.Haskell.Syntax.Module.Name as GHCModuleName
+#elif __GLASGOW_HASKELL__ >= 900
+import qualified GHC.Unit.Module.Name as GHCModuleName
+#endif
 #if __GLASGOW_HASKELL__ >= 900
 import qualified GHC.Core.TyCon       as GHCTyCon
 import qualified GHC.Types.Name.Occurrence     as GHCOccName
 import qualified GHC.Unit.Types      as GHCModule
-import qualified GHC.Unit.Module.Name
 #else
 import qualified TyCon       as GHCTyCon
 import qualified OccName     as GHCOccName
@@ -130,7 +137,12 @@ ourInitGhcMonad mb_top_dir = do
   GHCMonadUtils.liftIO $ GHCStaticFlags.initStaticOpts
 #endif
 
-#if __GLASGOW_HASKELL__ >= 810
+#if __GLASGOW_HASKELL__ >= 906
+  top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
+  mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
+  dflags     <- GHCMonadUtils.liftIO (GHCDynFlags.initDynFlags (
+                  GHCDynFlags.defaultDynFlags mySettings))
+#elif __GLASGOW_HASKELL__ >= 810
   top_dir    <- GHCMonadUtils.liftIO $ GHCSysToolsBaseDir.findTopDir mb_top_dir
   mySettings <- GHCMonadUtils.liftIO $ GHCSysTools.initSysTools top_dir
   llvmc      <- GHCMonadUtils.liftIO $ GHCSysTools.lazyInitLlvmConfig top_dir
@@ -162,7 +174,10 @@ ourInitGhcMonad mb_top_dir = do
   liftIO $ GHCDynFlags.setUnsafeGlobalDynFlags dflags
 #else
 #endif
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 906
+  env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv top_dir (
+    GHCDynFlags.wopt_unset dflags GHCDynFlags.Opt_WarnWarningsDeprecations)
+#elif __GLASGOW_HASKELL__ >= 900
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv (
     GHCDynFlags.wopt_unset dflags GHCDynFlags.Opt_WarnWarningsDeprecations)
 #else
@@ -365,19 +380,6 @@ readGHCModule name = do
 -- The following functions handle the second stage of importing a
 -- module: converting TyThings into PreObjs and TyNSElts
 
-#if __GLASGOW_HASKELL__ >= 806
--- The constructor for the function type was officially renamed in GHC 8.6
--- We want to undo the effect of this renaming
-newFnTyCon = mkTyCon (T.pack "ghc-prim") (T.pack "GHC.Prim") (T.pack "->")
-             (InExplicitModuleNamed $ T.pack "GHC.Prim") (simplKnd 2) False
-normalizeTyCon :: TyCon -> TyCon
-normalizeTyCon tyc | tyc == newFnTyCon = fnTyCon
-normalizeTyCon tyc | otherwise         = tyc
-#else
-normalizeTyCon :: TyCon -> TyCon
-normalizeTyCon = id
-#endif
-
 -- | Convert a Data constructor into a TyCon, if we can. (We can't if,
 -- say, it uses unboxed types or something like that.) We usually
 -- assume that the TyCon can be imported from which it is defined; if
@@ -386,7 +388,10 @@ normalizeTyCon = id
 -- Maybe TyCLocation.
 
 transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe (TyCon, [GHC.Type -> Bool])
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 906
+transformGHCTyc _ tyc | GHC.Builtin.Types.Prim.isArrowTyCon tyc
+                                            = Just (fnTyCon, [const True, isLiftedRuntimeRep, isLiftedRuntimeRep])
+#elif __GLASGOW_HASKELL__ >= 900
 transformGHCTyc _ tyc | GHC.isFunTyCon tyc  = Just (fnTyCon, [const True, isLiftedRuntimeRep, isLiftedRuntimeRep])
 #endif
 transformGHCTyc loc tyc = do
@@ -426,10 +431,18 @@ transformGHCTyNSElt import_module tyc = let
 #else
   in case GHCTyCon.tcExpandTyCon_maybe tyc args of
 #endif
+#if __GLASGOW_HASKELL__ >= 906
+    GHCTyCon.NoExpansion -> do
+#else
     Nothing -> do
+#endif
       (tyc', _) <- transformGHCTyc (Just $ InExplicitModuleNamed import_module) tyc
       return (if tyc' == fnTyCon then T.pack "(->)" else oname, Left tyc')
+#if __GLASGOW_HASKELL__ >= 906
+    GHCTyCon.ExpandsSyn assigs expansion leftoverVars -> case leftoverVars of
+#else
     Just (assigs, expansion, leftoverVars) -> case leftoverVars of
+#endif
       (_:_) -> error "transformGHCTyNSElt: unexpected leftover vars"
       []    -> do let doAssig (tyv, var) = do ((tyv', k), _) <- transformGHCTyVar tyv
                                               return (tyv', mkHsType (Right (var, k)) [])
@@ -540,7 +553,10 @@ transformGHCTyVar tyv = do
 splitConstraint :: GHC.Type -> (Maybe GHC.Type, GHC.Type)
 splitConstraint ty = case GHCType.splitFunTy_maybe ty of
   Nothing          -> (Nothing, ty)
-#if __GLASGOW_HASKELL__ >= 900
+#if __GLASGOW_HASKELL__ >= 906
+  Just (_, _, src, dest) -> if GHCType.isConstraintKind (GHCType.typeKind src)
+                               then (Just src, dest) else (Nothing, ty)
+#elif __GLASGOW_HASKELL__ >= 900
   Just (_, src, dest) -> if GHCType.tcIsConstraintKind (GHCType.typeKind src)
                             then (Just src, dest) else (Nothing, ty)
 #elif __GLASGOW_HASKELL__ >= 806
@@ -592,7 +608,23 @@ dataConSpecials = HashMap.fromList $ map (T.pack *** (T.pack *** T.pack)) $ [
   ("GHC.Tuple.(,,,,,,,,,,,,)"    ,("(,,,,,,,,,,,,)",    "(:[])")),
   ("GHC.Tuple.(,,,,,,,,,,,,,)"   ,("(,,,,,,,,,,,,,)",   "(:[])")),
   ("GHC.Tuple.(,,,,,,,,,,,,,,)"  ,("(,,,,,,,,,,,,,,)",  "(:[])")),
-  ("GHC.Tuple.(,,,,,,,,,,,,,,,)" ,("(,,,,,,,,,,,,,,,)", "(:[])"))
+  ("GHC.Tuple.(,,,,,,,,,,,,,,,)" ,("(,,,,,,,,,,,,,,,)", "(:[])")),
+  ("GHC.Tuple.Prim.()"                ,("()",                "(:[])")),
+  ("GHC.Tuple.Prim.(,)"               ,("(,)",               "(:[])")),
+  ("GHC.Tuple.Prim.(,,)"              ,("(,,)",              "(:[])")),
+  ("GHC.Tuple.Prim.(,,,)"             ,("(,,,)",             "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,)"            ,("(,,,,)",            "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,)"           ,("(,,,,,)",           "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,)"          ,("(,,,,,,)",          "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,)"         ,("(,,,,,,,)",         "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,)"        ,("(,,,,,,,,)",        "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,)"       ,("(,,,,,,,,,)",       "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,,)"      ,("(,,,,,,,,,,)",      "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,,,)"     ,("(,,,,,,,,,,,)",     "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,,,,)"    ,("(,,,,,,,,,,,,)",    "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,,,,,)"   ,("(,,,,,,,,,,,,,)",   "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,,,,,,)"  ,("(,,,,,,,,,,,,,,)",  "(:[])")),
+  ("GHC.Tuple.Prim.(,,,,,,,,,,,,,,,)" ,("(,,,,,,,,,,,,,,,)", "(:[])"))
   ]
 
 -- | Convert a GHC Data constructor into two @(<name>, PreObj)@ pairs;
@@ -935,10 +967,10 @@ importSrcModules sess paths = do
     case loadOK of
       GHC.Succeeded ->
 #if __GLASGOW_HASKELL__ >= 902
-        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+        return [T.pack . GHCModuleName.moduleNameString
                 . GHCModule.moduleName . GHC.Unit.Module.ModSummary.ms_mod $ ms | ms <- moduleGraph]
 #elif __GLASGOW_HASKELL__ >= 900
-        return [T.pack . GHC.Unit.Module.Name.moduleNameString
+        return [T.pack . GHCModuleName.moduleNameString
                 . GHCModule.moduleName . GHCHscTypes.ms_mod $ ms | ms <- moduleGraph]
 #else
         return [T.pack . GHCModule.moduleNameString
