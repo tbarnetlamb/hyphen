@@ -396,7 +396,7 @@ normalizeTyCon :: TyCon -> TyCon
 #if __GLASGOW_HASKELL__ >= 906
 -- The constructor for the list type was officially renamed in GHC 9.6
 -- We want to undo the effect of this renaming
-normalizeTyCon tyc | tyConName tyc == T.pack "List" && traceShow tyc False = undefined
+normalizeTyCon tyc | tyConName tyc == T.pack "List" && traceShow (tyc, newListTyCon, tyc == newListTyCon) False = undefined
 normalizeTyCon tyc | tyc == newListTyCon = listTyCon
 #endif
 #if __GLASGOW_HASKELL__ >= 806
