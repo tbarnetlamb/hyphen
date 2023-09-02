@@ -603,6 +603,8 @@ def process_constructor(tycon, datacons_by_name, methods_by_name):
     tycon_class.interpret = make_interpreter(ways_to_interpret)
     tycon_class.all_constructors_known = [i[1] for i in ways_to_interpret]
 
+NAME_EXCEPTIONS = {("[]", "List")}
+
 def process_constructors_from_module(module_name):
     """Process all the type constructors and all data constructors from a
     given Haskell module named, building appropriate python type
@@ -626,7 +628,9 @@ def process_constructors_from_module(module_name):
         if not isinstance(tycon, hyphen.hslowlevel.TyCon) or (
                 get_seen_visible_module(tycon) != module_name):
             continue
-        assert tycon.name == tycon_name, "Name mismatch: {} vs {}".format(tycon.name, tycon_name)
+        assert (
+            tycon.name == tycon_name or (tycon.name, tycon_name) in NAME_EXCEPTIONS
+        ), ("Name mismatch: {} vs {}".format(tycon.name, tycon_name))
         tycons_defined_here[tycon] = ({}, {})
     for data_name, data in data_ns.items():
         if data_name.startswith("*co-"):
