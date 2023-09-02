@@ -230,8 +230,8 @@ def make_hs_tuple_type(*components):
     >>> tupl_type = make_hs_tuple_type(hs_bool, hs_int)
     >>> str(tupl_type)
     '<hyphen.HsType object representing (GHC.Types.Bool, GHC.Types.Int)>'
-    >>> tupl_type
-    hs.GHC.Tuple._['(,)'](hs.GHC.Types.Bool(), hs.GHC.Types.Int())
+    >>> tupl_type # doctest: +ELLIPSIS
+    hs.GHC.Tuple..._['(,)'](hs.GHC.Types.Bool(), hs.GHC.Types.Int())
     """
     if len(components) == 1:
         raise ValueError('No length-1 tuples in Haskell')
