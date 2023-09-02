@@ -26,7 +26,7 @@ MyName.the_type to get the type constructor.)
 
 b) Haskell modules can have entries with names like '+++' which are
 not legal pyhton identifiers. We still want them to be accessible from
-Python, and do this by giving the improted module a special '_'
+Python, and do this by giving the imported module a special '_'
 member, which is a dictionary mapping awkward names like '++' to the
 appropriate object.
 
