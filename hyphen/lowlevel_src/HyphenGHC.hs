@@ -27,6 +27,9 @@ import qualified Data.Traversable
 import qualified Unsafe.Coerce
 import qualified GHC
 import qualified GHC.Paths
+#if __GLASGOW_HASKELL__ >= 906
+import qualified GHC.Builtin.Types.Prim
+#endif
 #if __GLASGOW_HASKELL__ >= 902
 import qualified GHC.Builtin.Types    as GHCTysWiredIn
 #elif __GLASGOW_HASKELL__ >= 900
@@ -399,6 +402,8 @@ normalizeTyCon = id
 
 transformGHCTyc :: Maybe TyCLocation -> GHC.TyCon -> Maybe (TyCon, [GHC.Type -> Bool])
 #if __GLASGOW_HASKELL__ >= 906
+transformGHCTyc _ tyc | GHC.Builtin.Types.Prim.isArrowTyCon tyc
+                                            = Just (fnTyCon, [const True, isLiftedRuntimeRep, isLiftedRuntimeRep])
 #elif __GLASGOW_HASKELL__ >= 900
 transformGHCTyc _ tyc | GHC.isFunTyCon tyc  = Just (fnTyCon, [const True, isLiftedRuntimeRep, isLiftedRuntimeRep])
 #endif
