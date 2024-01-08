@@ -68,6 +68,8 @@ jobs:
         run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
       - if: matrix.os == 'macos-latest'
         run: echo "arch_flag=" >> $GITHUB_ENV
+      - run: python3 --version
+      - run: ghc --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} build
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc --version
@@ -111,6 +113,8 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
+      - run: python3 --version
+      - run: ghc --version
 # Building on x86_64 with m2w64 seems to tickle a ghc bug (see eg ghc
 # trac #14576) Can't build without m2w64 on windows 64 bit with python
 # 3.5 or later.  So don't bother to test these configurations for now.
