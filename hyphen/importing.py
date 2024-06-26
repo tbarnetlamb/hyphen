@@ -187,7 +187,6 @@ class HaskellFinderLoader():
     Haskell objects; see PEP302.
     """
     def find_module(self, module_name, path):
-        print(f"find_module {module_name}")
         if module_name.startswith('hs.'):
             return self
         elif module_name == 'hs':
@@ -244,7 +243,6 @@ haskell_finder_loader = HaskellFinderLoader()
 
 def install_hook():
     """Install the hook so that we can import Haskell modules."""
-    print("HOOK INSTALLED")
     sys.meta_path.append(haskell_finder_loader)
 
 def import_haskell_module(haskell_name):
