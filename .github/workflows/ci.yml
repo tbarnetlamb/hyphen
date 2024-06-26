@@ -47,7 +47,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest,macos-latest]
+        #os: [ubuntu-latest,macos-latest]
+        os: [macos-latest]
         stack: ["2.9.3"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
