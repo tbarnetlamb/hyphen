@@ -104,7 +104,7 @@ jobs:
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
-        resolver: ["lts-21.25"]
+        resolver: ["lts-14.27"]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
