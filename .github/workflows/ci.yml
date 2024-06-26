@@ -66,9 +66,6 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11' 
       - if: matrix.os == 'ubuntu-latest'
         run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
       - if: matrix.os == 'macos-latest'
@@ -108,7 +105,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
-           python-version: '3.11'
+           python-version: '3.x'
            architecture: 'x86'
       - uses: actions/setup-haskell@v1.1.4
         id: setup-haskell-stack
