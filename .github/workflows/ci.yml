@@ -25,7 +25,6 @@ jobs:
           cabal-version: ${{ matrix.cabal }}
       - run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: python3 --version
-      - run: ghc --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
       - run: python3 hyphen/build-extn.py --dynamic
       - run: python3 hyphen_examples_full.py
@@ -69,7 +68,6 @@ jobs:
       - if: matrix.os == 'macos-latest'
         run: echo "arch_flag=" >> $GITHUB_ENV
       - run: python3 --version
-      - run: ghc --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} build
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc --version
