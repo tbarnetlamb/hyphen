@@ -18,7 +18,7 @@ jobs:
         ghc: ["9.4"]
     steps:
       - uses: actions/checkout@v2
-      - uses: haskell/actions/setup@v1.2
+      - uses: haskell-actions/setup@v1.2
         id: setup-haskell-cabal
         with:
           ghc-version: ${{ matrix.ghc }}
@@ -46,7 +46,7 @@ jobs:
     strategy:
       matrix:
         #os: [ubuntu-latest,macos-13]
-        os: [macos-13]
+        os: [macos-12]
         stack: ["2.9.3"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
@@ -95,7 +95,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest]
+        os: [windows-2019]
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS...
         bootstrap_ghc: ["8.10.5"]
