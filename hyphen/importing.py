@@ -199,7 +199,7 @@ class HaskellFinderLoader():
         else:
             return None
 
-    def find_spec(self, module_name, path):
+    def find_spec(self, module_name, path, target=None):
         if module_name.startswith('hs.') or module_name == 'hs':
             return spec_from_loader(module_name, self)
         else:
