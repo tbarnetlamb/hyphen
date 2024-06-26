@@ -29,8 +29,6 @@ jobs:
       - run: python3 --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
       - run: python3 hyphen/build-extn.py --dynamic
-      - run: file hslowlevel.cpython-312-darwin.so
-      - run: ls
       - run: python3 hyphen_examples_full.py
 # Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
       - run: python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
@@ -79,6 +77,8 @@ jobs:
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc -dynamic-too -shared -fPIC Test.hs -no-link
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic
+      - run: file hslowlevel.cpython-312-darwin.so
+      - run: ls
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
 # Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
