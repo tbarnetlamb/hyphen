@@ -17,7 +17,7 @@ jobs:
         cabal: ["3.4"]
         ghc: ["9.4"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: haskell-actions/setup@v2
         id: setup-haskell-cabal
         with:
@@ -58,8 +58,8 @@ jobs:
 #          - os: macos-latest
 #            resolver: "lts-19.33" # This resolver seems buggy on MacOS
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-haskell@v1.1.4
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
         id: setup-haskell-stack
         with:
           ghc-version: ${{ matrix.bootstrap_ghc }}
@@ -97,12 +97,12 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest]
-        stack: ["2.3.1"]
+        stack: ["latest"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
         resolver: ["lts-14.27"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v2
         with:
            python-version: '3.x'
