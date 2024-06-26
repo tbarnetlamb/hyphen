@@ -24,6 +24,7 @@ jobs:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
       - run: cabal install alex
+        working-directory: ..
       - run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: python3 --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
@@ -47,7 +48,7 @@ jobs:
     strategy:
       matrix:
         #os: [ubuntu-latest,macos-13]
-        os: [macos-12]
+        os: [macos-13]
         stack: ["2.9.3"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
@@ -99,7 +100,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-2019]
+        os: [windows-latest]
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS...
         bootstrap_ghc: ["8.10.5"]
