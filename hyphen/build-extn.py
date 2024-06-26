@@ -118,7 +118,6 @@ invocation = flatten([
     cygpreppath(os.path.join(work_dir, 'lowlevel_src', 'Hyphen.hs')),
     cygpreppath(os.path.join(work_dir, 'lowlevel_src', hyphen_c)),
     '-i' + cygpreppath(os.path.join(work_dir, 'lowlevel_src')),
-    '-optc-arch', '-optcarm64',
 
     # Intermediate files
     '-hidir', cygpreppath(os.path.join(work_dir, 'lowlevel_inter')),
