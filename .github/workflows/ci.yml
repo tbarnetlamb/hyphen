@@ -23,6 +23,7 @@ jobs:
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
+      - run: cabal install alex
       - run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: python3 --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
