@@ -78,6 +78,11 @@ from hyphen.caches     import fetch_lib_module
 from hyphen.utils      import datacon_tycon, hs_List
 import hyphen
 
+try:
+    from importlib.util import spec_from_loader
+except:
+    pass
+
 ## See point (c) in module docstring for discussion of these variables
 
 EXPECTED_EMPTY = ['Data', 'Control', 'Foreign', 'GHC']
@@ -191,6 +196,12 @@ class HaskellFinderLoader():
             return self
         elif module_name == 'hs':
             return self
+        else:
+            return None
+
+    def find_spec(self, module_name, path, target=None):
+        if module_name.startswith('hs.') or module_name == 'hs':
+            return spec_from_loader(module_name, self)
         else:
             return None
 

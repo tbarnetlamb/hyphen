@@ -58,20 +58,14 @@ which prompts lots of warnings that rebuilding modules is dangerous.
 
 Here's what I had to do:
 
-    cabal install --reinstall --force-reinstalls --enable-shared text
-    cabal install --reinstall --force-reinstalls --enable-shared transformers
-	cabal install --reinstall --force-reinstalls --enable-shared mtl
-	cabal install --reinstall --force-reinstalls --enable-shared parsec
-	cabal install --reinstall --force-reinstalls --enable-shared hashable
-	cabal install --reinstall --force-reinstalls --enable-shared unordered-containers
-	cabal install --enable-shared --reinstall ghc-paths
+    cabal v1-install --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
 
 BTW, even though on windows (or on other platforms if you attempt a
 static build) it is not necessary to make sure you have installed
 dynamic versions of all the above modules, you still have to make sure
 that they are installed. So in such cases you still need to do:
 
-    cabal install text transformers mtl parsec hashable unordered-containers ghc-paths
+    cabal v1-install text transformers mtl parsec hashable unordered-containers ghc-paths
 
 Mac OS X
 --------
