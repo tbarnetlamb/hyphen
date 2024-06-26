@@ -107,7 +107,7 @@ jobs:
         with:
            python-version: '3.x'
            architecture: 'x86'
-      - uses: actions/setup-haskell@v1.1.4
+      - uses: haskell-actions/setup@v2
         id: setup-haskell-stack
         with:
           ghc-version: ${{ matrix.bootstrap_ghc }}
