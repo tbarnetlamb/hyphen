@@ -25,7 +25,6 @@ jobs:
           cabal-version: ${{ matrix.cabal }}
       - run: cabal install alex
         working-directory: ..
-      #- run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: cabal v1-install --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: python3 --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
