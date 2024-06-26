@@ -26,6 +26,7 @@ jobs:
       - run: cabal install alex
         working-directory: ..
       #- run: cabal v1-install --reinstall --force-reinstalls --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
+      - run: cabal v1-install --enable-shared text transformers mtl parsec hashable unordered-containers ghc-paths
       - run: python3 --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
       - run: python3 hyphen/build-extn.py --dynamic
@@ -52,7 +53,8 @@ jobs:
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
          # GHC         8.0,        8.2,         8.4,          8.6,         8.8,         8.10,         9.0,        9.2         9.4          9.6
-        resolver: ["lts-9.21", "lts-11.22", "lts-12.26", "lts-14.27", "lts-16.31", "lts-18.28", "lts-19.33", "lts-20.26", "lts-21.25", "lts-22.26"]
+#        resolver: ["lts-9.21", "lts-11.22", "lts-12.26", "lts-14.27", "lts-16.31", "lts-18.28", "lts-19.33", "lts-20.26", "lts-21.25", "lts-22.26"]
+        resolver: ["lts-21.25", "lts-22.26"]
 #        exclude:
 #          - os: macos-latest
 #            resolver: "lts-19.33" # This resolver seems buggy on MacOS
@@ -102,7 +104,7 @@ jobs:
         stack: ["2.3.1"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
-        resolver: ["lts-12.9"]
+        resolver: ["lts-21.25"]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
