@@ -1025,7 +1025,9 @@ close_GHC_state stableSessionPtr = ioIntFromPythonMInt_ $ do
     castPtrToStablePtr stableSessionPtr :: StablePtr GhcMonad.Session)
   translatingHsExcepts . lift $ flip GhcMonad.reflectGhc sess $ do
     flags <- GHC.getSessionDynFlags
+#if __GLASGOW_HASKELL__ < 800
     GHC.defaultCleanupHandler flags $ return 0
+#endif
 
 -- | Fetch the integer which means GILRuleLazy
 
