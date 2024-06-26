@@ -48,7 +48,7 @@ jobs:
     strategy:
       matrix:
         #os: [ubuntu-latest,macos-latest]
-        os: [macos-latest,macos-13]
+        os: [macos-latest,macos-13,ubuntu-latest]
         stack: ["2.9.3"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
@@ -67,11 +67,12 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
+      - run: uname -m
+      - run: arch
       - if: matrix.os == 'ubuntu-latest'
         run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
       - if: matrix.os == 'macos-latest'
         run: echo "arch_flag=" >> $GITHUB_ENV
-      - run: echo $arch
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} build
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 --version
       - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc --version
