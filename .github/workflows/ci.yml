@@ -47,16 +47,28 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest,macos-13]
+        os: [ubuntu-latest,macos-latest,macos-13]
         stack: ["2.9.3"]
 # GHC version here doesn't really matter because stack picks one from the LTS
         bootstrap_ghc: ["8.10.5"]
          # GHC         8.0,        8.2,         8.4,          8.6,         8.8,         8.10,         9.0,        9.2         9.4          9.6
         resolver: ["lts-9.21", "lts-11.22", "lts-12.26", "lts-14.27", "lts-16.31", "lts-18.28", "lts-19.33", "lts-20.26", "lts-21.25", "lts-22.26"]
         #resolver: ["lts-21.25", "lts-22.26"]  # for quick tests
-#        exclude:
-#          - os: macos-latest
-#            resolver: "lts-19.33" # This resolver seems buggy on MacOS
+        exclude:
+          - os: macos-latest
+            resolver: "lts-9.21" # Only 8.10+ on apple silicon
+          - os: macos-latest
+            resolver: "lts-11.22" # Only 8.10+ on apple silicon
+          - os: macos-latest
+            resolver: "lts-12.26" # Only 8.10+ on apple silicon
+          - os: macos-latest
+            resolver: "lts-14.27" # Only 8.10+ on apple silicon
+          - os: macos-latest
+            resolver: "lts-16.31" # Only 8.10+ on apple silicon
+          - os: macos-latest
+            resolver: "lts-18.28" # Stack seems unreliable on Apple silicon for older GHCs (upstream builds often fail), so limit # of flaky tests
+          - os: macos-latest
+            resolver: "lts-19.33" # Stack seems unreliable on Apple silicon for older GHCs (upstream builds often fail), so limit # of flaky tests
     steps:
       - uses: actions/checkout@v4
       - uses: haskell-actions/setup@v2
@@ -66,31 +78,31 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
-      - if: matrix.os == 'ubuntu-latest'
-        run: echo "arch_flag=--arch x86_64" >> $GITHUB_ENV
-      - if: matrix.os == 'macos-latest'
-        run: echo "arch_flag=" >> $GITHUB_ENV
-      - run: python3 --version
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} build
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 --version
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc --version
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- ghc -dynamic-too -shared -fPIC Test.hs -no-link
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
+      - run: stack --resolver ${{ matrix.resolver }} build
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 --version
+      - run: stack --resolver ${{ matrix.resolver }} exec -- ghc --version
+      - run: stack --resolver ${{ matrix.resolver }} exec -- ghc -dynamic-too -shared -fPIC Test.hs -no-link
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic
+      - run: file hyphen/hslowlevel.cpython-312-darwin.so
+      - run: file hyphen/lowlevel_inter/Hyphen.o
+      - run: file hyphen/lowlevel_src/hyphen_c.o
+      - run: ls  hyphen/lowlevel_inter
+      - run: ls  hyphen/lowlevel_src
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
 # Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py haskell 40 0 33
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py lazy 40 31 100
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py python 5 40 0 33
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py haskell 5 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py haskell 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py lazy 40 31 100
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py python 5 40 0 33
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/interrupting_after.py 30 python3 test_tools/test_ei_with_nuisance_threads.py haskell 5 40 0 33
 # Test that releasing the GIL works (and that we get the expected behavior with it disabled)
       - if: matrix.os == 'ubuntu-latest'
-        run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12.5
+        run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py fancy 5 5 5 12.5
       - if: matrix.os == 'ubuntu-latest'
-        run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
+        run: stack --resolver ${{ matrix.resolver }} exec -- python3 test_tools/test_GIL_release.py lazy 5 5 24 100
 # Now test everything that still makes sense without the threaded Haskell rts
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic --not-threaded
-      - run: stack ${{ env.arch_flag }} --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen/build-extn.py --dynamic --not-threaded
+      - run: stack --resolver ${{ matrix.resolver }} exec -- python3 hyphen_examples_full.py
   stack-win:
     name: ${{ matrix.os }} / stack ${{ matrix.resolver }}
     runs-on: ${{ matrix.os }}
@@ -114,7 +126,6 @@ jobs:
           stack-version: ${{ matrix.stack }}
           stack-no-global: True
           enable-stack: True
-      - run: python3 --version
       - run: ghc --version
 # Building on x86_64 with m2w64 seems to tickle a ghc bug (see eg ghc
 # trac #14576) Can't build without m2w64 on windows 64 bit with python

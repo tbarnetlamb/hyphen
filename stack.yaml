@@ -3,5 +3,3 @@ resolver: lts-18.16
 packages:
 - .
 
-arch: i386
-# arch: x86_64
