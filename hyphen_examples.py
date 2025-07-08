@@ -46,7 +46,7 @@ This file contains all the examples from README.md as doctests.
 >>> my_func('Hello')
 4
 
->>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it
+>>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it # doctest: +ELLIPSIS
 <hs.GHC.Types.IO object of Haskell type GHC.Types.IO ...>
 
 >>> import hyphen
