@@ -29,7 +29,7 @@ jobs:
       - run: python3 --version
       - run: ghc -dynamic-too -shared -fPIC Test.hs -no-link
       - run: python3 hyphen/build-extn.py --dynamic
-      - run: python3 hyphen_examples_full.py
+      - run: python3 test_tools/interrupting_after.py 120 python3 hyphen_examples_full.py
 # Test that the signal mode fancy stuff works (and that we get the expected behaviour with it disabled)
       - run: python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py python 40 0 33
       - run: python3 test_tools/interrupting_after.py 30 python3 test_tools/test_expecting_interruption.py haskell 40 0 33
