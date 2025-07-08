@@ -43,7 +43,7 @@ TypeError: ...must be int, not float
 <hs.GHC.Tuple... object of Haskell type ...GHC...Integer... GHC.Types.Float... Data.Text.Internal.Text..., containing '(1,2.0,"foo")'>
 
 >>> hs.Prelude.id((True, 1+2.j))   # doctest: +ELLIPSIS
-<hs.GHC.Tuple... object of Haskell type ...GHC.Types.Bool... Data.Complex.Complex GHC.Types.Float..., containing '(True,1.0 :+ 2.0)'>
+<hs.GHC.Tuple... object of Haskell type ...GHC.Types.Bool...Data.Complex.Complex GHC.Types.Float..., containing '(True,1.0 :+ 2.0)'>
 
 >>> hs.Prelude.id({1 : True, 2 : False}) # doctest: +ELLIPSIS
 <hs.Data.Map... object of Haskell type Data.Map... GHC...Integer GHC.Types.Bool, containing 'fromList [(1,True),(2,False)]'>
