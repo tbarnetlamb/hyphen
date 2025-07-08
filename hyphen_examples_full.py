@@ -114,7 +114,7 @@ hyphen.HsException: thread killed
 ... except hyphen.HsException as e:
 ...     print(type(e))
 ...     print(type(e.hs_exception))
-...     print(str(e.hs_exception.hstype).replace('GHC.Exception.Type','GHC.Exception')).replace('GHC.Internal.Exception.Type','GHC.Exception'))
+...     print(str(e.hs_exception.hstype).replace('GHC.Exception.Type','GHC.Exception').replace('GHC.Internal.Exception.Type','GHC.Exception'))
 ...     print(hs.Prelude.show(e.hs_exception))
 <class 'hyphen.HsException'>
 <class 'hsobjraw.HsObjRaw'>
