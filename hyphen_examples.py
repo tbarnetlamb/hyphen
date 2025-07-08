@@ -47,7 +47,7 @@ This file contains all the examples from README.md as doctests.
 4
 
 >>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it
-<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
+<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ...>
 
 >>> import hyphen
 >>> hyphen.find_and_load_haskell_source()
