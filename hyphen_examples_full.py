@@ -40,10 +40,10 @@ Traceback (most recent call last):
 TypeError: ...must be int, not float
 
 >>> hs.Prelude.id((1, 2.0, 'foo'))  # doctest: +ELLIPSIS
-<hs.GHC.Tuple...(,,) object of Haskell type (GHC...Integer, GHC.Types.Float, Data.Text.Internal.Text), containing '(1,2.0,"foo")'>
+<hs.GHC.Tuple... object of Haskell type ...GHC...Integer... GHC.Types.Float... Data.Text.Internal.Text..., containing '(1,2.0,"foo")'>
 
 >>> hs.Prelude.id((True, 1+2.j))   # doctest: +ELLIPSIS
-<hs.GHC.Tuple...(,) object of Haskell type (GHC.Types.Bool, Data.Complex.Complex GHC.Types.Float), containing '(True,1.0 :+ 2.0)'>
+<hs.GHC.Tuple... object of Haskell type ...GHC.Types.Bool... Data.Complex.Complex GHC.Types.Float..., containing '(True,1.0 :+ 2.0)'>
 
 >>> hs.Prelude.id({1 : True, 2 : False}) # doctest: +ELLIPSIS
 <hs.Data.Map... object of Haskell type Data.Map... GHC...Integer GHC.Types.Bool, containing 'fromList [(1,True),(2,False)]'>
@@ -103,8 +103,8 @@ False
 >>> import hyphen
 >>> import hs.Control.Exception
 >>> IO_returning_emptytup = hs.Control.Exception.allowInterrupt.hstype
->>> hs.Control.Exception.throwIO(hs.Control.Exception.ThreadKilled()).narrow_type(IO_returning_emptytup)
-<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
+>>> hs.Control.Exception.throwIO(hs.Control.Exception.ThreadKilled()).narrow_type(IO_returning_emptytup)   # doctest: +ELLIPSIS
+<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ...>
 >>> hs.Control.Exception.throwIO(hs.Control.Exception.ThreadKilled()).narrow_type(IO_returning_emptytup).act()
 Traceback (most recent call last):
 ...
@@ -126,8 +126,8 @@ Check that when exceptions raised in Haskell propagate through Python
 code and back into Haskell, they are properly re-constituted.
 >>> def raise_test_exception():
 ...    hs.Control.Exception.throwIO(hs.Test.TestException(3)).narrow_type(IO_returning_emptytup).act()
->>> hs.Test.do_and_catch_testexception(raise_test_exception)
-<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
+>>> hs.Test.do_and_catch_testexception(raise_test_exception)  # doctest: +ELLIPSIS
+<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ...>
 """
 
 import sys
