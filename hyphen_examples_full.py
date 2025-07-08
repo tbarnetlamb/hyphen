@@ -54,10 +54,10 @@ TypeError: ...must be int, not float
 (Next 2 tests written in a funny way because Data.Maybe.Maybe moved to GHC.Base,
 and we want a test that passes both before and after the move)
 
->>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')  # doctest: +ELLIPSIS
+>>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe('a'))(1)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe').replace('GHC.Internal.Maybe', 'Data.Maybe')  # doctest: +ELLIPSIS
 "<hs.Data.Maybe.Just object of Haskell type Data.Maybe.Maybe GHC...Integer, containing 'Just 1'>"
 
->>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')  # doctest: +ELLIPSIS
+>>> repr(hs.Prelude.id.subst(a=hyphen.utils.hs_Maybe(hs.Prelude.Integer()))(None)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe').replace('GHC.Internal.Maybe', 'Data.Maybe')  # doctest: +ELLIPSIS
 "<hs.Data.Maybe.Nothing object of Haskell type Data.Maybe.Maybe GHC...Integer, containing 'Nothing'>"
 
 Checking that (e.g.) Haskell lists give rise to iterable Python objects
@@ -114,7 +114,7 @@ hyphen.HsException: thread killed
 ... except hyphen.HsException as e:
 ...     print(type(e))
 ...     print(type(e.hs_exception))
-...     print(str(e.hs_exception.hstype).replace('GHC.Exception.Type','GHC.Exception'))
+...     print(str(e.hs_exception.hstype).replace('GHC.Exception.Type','GHC.Exception')).replace('GHC.Internal.Exception.Type','GHC.Exception'))
 ...     print(hs.Prelude.show(e.hs_exception))
 <class 'hyphen.HsException'>
 <class 'hsobjraw.HsObjRaw'>
