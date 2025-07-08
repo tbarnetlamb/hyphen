@@ -179,7 +179,7 @@ ourInitGhcMonad mb_top_dir = do
 #endif
 #if __GLASGOW_HASKELL__ >= 908
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv top_dir (
-    GHCDynFlags.wopt_unset dflags GHC.Driver.Flags.Opt_WarnWarningsDeprecations)
+    GHCDynFlags.wopt_unset_all_custom dflags)
 #elif __GLASGOW_HASKELL__ >= 906
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv top_dir (
     GHCDynFlags.wopt_unset dflags GHCDynFlags.Opt_WarnWarningsDeprecations)
