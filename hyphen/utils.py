@@ -228,7 +228,7 @@ def make_hs_tuple_type(*components):
 
     >>> hs_bool, hs_int = (hslowlevel.hstype_Bool, hslowlevel.hstype_Int)
     >>> tupl_type = make_hs_tuple_type(hs_bool, hs_int)
-    >>> str(tupl_type)
+    >>> str(tupl_type) # doctest: +ELLIPSIS
     '<hyphen.HsType object representing ...GHC.Types.Bool...GHC.Types.Int...>'
     >>> tupl_type # doctest: +ELLIPSIS
     hs.GHC.Tuple...(hs.GHC.Types.Bool(), hs.GHC.Types.Int())
