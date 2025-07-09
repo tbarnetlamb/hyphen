@@ -148,9 +148,9 @@ if __name__ == "__main__":
     import hyphen
     for GIL in 'GIL_mode_lazy', 'GIL_mode_fancy':
         for sig in 'signal_mode_lazy', 'signal_mode_haskell', 'signal_mode_python':
-            print("**********************************************")
-            print("* TEST BATCH : " + GIL + " " + sig )
-            print("**********************************************")
+            print("**********************************************", file=sys.stderr)
+            print("* TEST BATCH : " + GIL + " " + sig, file=sys.stderr)
+            print("**********************************************", file=sys.stderr, flush=True)
             getattr(hyphen.hslowlevel, 'set_' + GIL)()
             getattr(hyphen.hslowlevel, 'set_' + sig)()
             runtest()
