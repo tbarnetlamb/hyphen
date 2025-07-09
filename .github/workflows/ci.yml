@@ -71,6 +71,10 @@ jobs:
             resolver: "lts-19.33" # Stack seems unreliable on Apple silicon for older GHCs (upstream builds often fail), so limit # of flaky tests
           - os: macos-latest
             resolver: "lts-20.26" # Stack seems unreliable on Apple silicon for older GHCs (upstream builds often fail), so limit # of flaky tests
+          - os: macos-13
+            resolver: "lts-23.27" # Recent Haskell version seem unreliable on macos-13 
+          - os: macos-13
+            resolver: "nightly-2025-07-08" # Recent Haskell version seem unreliable on macos-13 
     steps:
       - uses: actions/checkout@v4
       - uses: haskell-actions/setup@v2
