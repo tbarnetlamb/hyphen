@@ -174,7 +174,7 @@ def datacon_tycon(dc):
     constructor A, then we will get back the representation of the
     type constructor X.
 
-    >>> repr(datacon_tycon(hs_Nothing)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe')
+    >>> repr(datacon_tycon(hs_Nothing)).replace('GHC.Base', 'Data.Maybe').replace('GHC.Maybe', 'Data.Maybe').replace('GHC.Internal.Maybe', 'Data.Maybe')
     'hs.Data.Maybe.Maybe.hs_tycon'
 
     (Test written in a funny way because Data.Maybe.Maybe moved to GHC.Base, and
@@ -228,10 +228,10 @@ def make_hs_tuple_type(*components):
 
     >>> hs_bool, hs_int = (hslowlevel.hstype_Bool, hslowlevel.hstype_Int)
     >>> tupl_type = make_hs_tuple_type(hs_bool, hs_int)
-    >>> str(tupl_type)
-    '<hyphen.HsType object representing (GHC.Types.Bool, GHC.Types.Int)>'
+    >>> str(tupl_type) # doctest: +ELLIPSIS
+    '<hyphen.HsType object representing ...GHC.Types.Bool...GHC.Types.Int...>'
     >>> tupl_type # doctest: +ELLIPSIS
-    hs.GHC.Tuple..._['(,)'](hs.GHC.Types.Bool(), hs.GHC.Types.Int())
+    hs.GHC.Tuple...(hs.GHC.Types.Bool(), hs.GHC.Types.Int())
     """
     if len(components) == 1:
         raise ValueError('No length-1 tuples in Haskell')

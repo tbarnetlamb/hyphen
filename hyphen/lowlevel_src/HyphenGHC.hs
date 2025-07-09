@@ -30,6 +30,9 @@ import qualified GHC.Paths
 #if __GLASGOW_HASKELL__ >= 906
 import qualified GHC.Builtin.Types.Prim
 #endif
+#if __GLASGOW_HASKELL__ >= 908
+import qualified GHC.Driver.Flags
+#endif
 #if __GLASGOW_HASKELL__ >= 902
 import qualified GHC.Builtin.Types    as GHCTysWiredIn
 #elif __GLASGOW_HASKELL__ >= 900
@@ -174,7 +177,10 @@ ourInitGhcMonad mb_top_dir = do
   liftIO $ GHCDynFlags.setUnsafeGlobalDynFlags dflags
 #else
 #endif
-#if __GLASGOW_HASKELL__ >= 906
+#if __GLASGOW_HASKELL__ >= 908
+  env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv top_dir (
+    GHCDynFlags.wopt_unset_all_custom dflags)
+#elif __GLASGOW_HASKELL__ >= 906
   env <- GHCMonadUtils.liftIO $ GHCHscMain.newHscEnv top_dir (
     GHCDynFlags.wopt_unset dflags GHCDynFlags.Opt_WarnWarningsDeprecations)
 #elif __GLASGOW_HASKELL__ >= 900

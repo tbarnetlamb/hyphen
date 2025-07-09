@@ -46,8 +46,8 @@ This file contains all the examples from README.md as doctests.
 >>> my_func('Hello')
 4
 
->>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it
-<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ()>
+>>> hs.Prelude.putStrLn("Test") # Construct IO action, but don't perform it # doctest: +ELLIPSIS
+<hs.GHC.Types.IO object of Haskell type GHC.Types.IO ...>
 
 >>> import hyphen
 >>> hyphen.find_and_load_haskell_source()
@@ -82,9 +82,9 @@ This file contains all the examples from README.md as doctests.
 <hs.GHC.Types.[] object of Haskell type [GHC...Integer], containing '[1,2,3]'>
 
 >>> hs.Prelude.id((1, 2))  # Prefer to convert Python tuples to Haskell tuples, not lists  # doctest: +ELLIPSIS
-<hs.GHC.Tuple...(,) object of Haskell type (GHC...Integer, GHC...Integer), containing '(1,2)'>
+<hs.GHC.Tuple... object of Haskell type ..., containing '(1,2)'>
 >>> hs.Prelude.id((1, "Test")) # Prefer to convert Python strings to Haskell Text  # doctest: +ELLIPSIS
-<hs.GHC.Tuple...(,) object of Haskell type (GHC...Integer, Data.Text.Internal.Text), containing '(1,"Test")'>
+<hs.GHC.Tuple... object of Haskell type ...Data.Text.Internal.Text..., containing '(1,"Test")'>
 
 >>> try:
 ...    hs.Prelude._['+'] (1, 2+3j) # doctest: +ELLIPSIS
