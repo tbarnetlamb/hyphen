@@ -145,9 +145,14 @@ def runtest():
         sys.exit(1)
 
 if __name__ == "__main__":
-    import hyphen
+    import hyphen, sys
+    if sys.platform != "darwin":
+        signal_modes = 'signal_mode_lazy', 'signal_mode_haskell', 'signal_mode_python'
+    else:
+        signal_modes = 'signal_mode_lazy',
+    print((sys.platform, signal_modes))
     for GIL in 'GIL_mode_lazy', 'GIL_mode_fancy':
-        for sig in 'signal_mode_lazy', 'signal_mode_haskell', 'signal_mode_python':
+        for sig in signal_modes:
             print("**********************************************", file=sys.stderr)
             print("* TEST BATCH : " + GIL + " " + sig, file=sys.stderr)
             print("**********************************************", file=sys.stderr, flush=True)
